@@ -5,10 +5,10 @@
 *.sh text eol=lf
 *.mk test eol=lf
 *.patch -text
-*.vcproj text eol=crlf
 
 # Custom for Visual Studio
 *.cs     diff=csharp
+*.vcproj -text
 
 # Standard to msysgit
 *.doc	 diff=astextplain
