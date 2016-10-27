@@ -23,6 +23,7 @@
 #include "core_main.h"
 #include "core_tables.h"
 #include "core_variables.h"
+#include "hpil_printer.h"
 #include "shell.h"
 
 
@@ -673,6 +674,27 @@ void repaint_display() {
     shell_blitter(display, 17, 0, 0, 131, 16);
 }
 
+void scroll_display(int row, const char *s, int length) {
+	int v;
+	int y0, y1;
+	if (row <0 || row >=2) {
+		return;
+	}
+	y0 = row == 1 ? 136 : 0;
+	y1 = row == 1 ? 0 : 136;
+	clear_row(row == 1 ? 0 : 1);
+	for (v = y1; v < y1 + 136; v++) {
+		display[v] = display[y0];
+		y0++;
+	}
+    mark_dirty(0, 0, 16, 131);
+	clear_row(row);
+    draw_string(0, row, s, length);
+    flags.f.message = 1;
+    flags.f.two_line_message = 1;
+	flush_display();
+}
+
 void draw_pixel(int x, int y) {
     display[y * 17 + (x >> 3)] |= 1 << (x & 7);
     mark_dirty(y, x, y + 1, x + 1);
@@ -992,7 +1014,7 @@ static int prgmline2buf(char *buf, int len, int4 line, int highlight,
 void display_prgm_line(int row, int line_offset) {
     int4 tmppc = pc;
     int4 tmpline = pc2line(pc);
-    int cmd;
+    int cmd = 0;
     arg_struct arg;
     char buf[44];
     int bufptr;
@@ -1383,6 +1405,7 @@ static extension_struct extensions[] = {
     { CMD_HEADING, CMD_HEADING, &core_settings.enable_ext_heading  },
     { CMD_ADATE,   CMD_SWPT,    &core_settings.enable_ext_time     },
     { CMD_FPTEST,  CMD_FPTEST,  &core_settings.enable_ext_fptest   },
+    { CMD_IFC,     CMD_OUTXB,   &core_settings.enable_ext_hpil     },
     { CMD_NULL,    CMD_NULL,    NULL                               }
 };
 
@@ -1987,6 +2010,7 @@ void redisplay() {
 
 void print_display() {
     shell_print("<lcd>", 5, display, 17, 0, 0, 131, 16);
+	hpil_printLcd(display, 17, 0, 0, 131, 16);
 }
 
 typedef struct {

@@ -27,6 +27,7 @@
 #include "core_sto_rcl.h"
 #include "core_tables.h"
 #include "core_variables.h"
+#include "hpil_common.h"
 #include "shell.h"
 #include "shell_spool.h"
 
@@ -41,6 +42,8 @@ static void set_shift(bool state) {
 static void continue_running();
 static void stop_interruptible();
 static int handle_error(int error);
+
+int core_42ToFree42 (unsigned char *buf, int *pt, int l);
 
 int repeating = 0;
 int repeating_shift;
@@ -292,6 +295,7 @@ int core_keydown(int key, int *enqueued, int *repeat) {
     }
 
     /* Nothing going on at all! */
+	shell_write_console("/!\\");
     return 0;
 }
 
@@ -660,7 +664,7 @@ int core_list_programs(char *buf, int bufsize) {
     return count;
 }
 
-static int export_hp42s(int index, int (*progress_report)(const char *)) {
+static int export_hp42sx(int index, int (*progress_report)(const char *)) {
     int4 pc = 0;
     int cmd;
     arg_struct arg;
@@ -678,7 +682,8 @@ static int export_hp42s(int index, int (*progress_report)(const char *)) {
     do {
         get_next_command(&pc, &cmd, &arg, 0);
         hp42s_code = cmdlist(cmd)->hp42s_code;
-        code_flags = hp42s_code >> 24;
+		// add mask to take care of use of high flag nybble
+		code_flags = (hp42s_code >> 24) & 0x0f;
         code_name = hp42s_code >> 16;
         code_std_1 = hp42s_code >> 8;
         code_std_2 = hp42s_code;
@@ -948,6 +953,402 @@ static int export_hp42s(int index, int (*progress_report)(const char *)) {
     return cancel;
 }
 
+/* export using alternate exports
+ *
+ */
+static int export_hp42s(int index, int (*progress_report)(const char *)) {
+    int4 pc = 0;
+    int saved_prgm = current_prgm;
+    char buf[1000];
+	char cmdbuf[25];
+    int buflen = 0;
+	int cmdlen;
+	int i, done;
+
+    current_prgm = index;
+    do {
+		cmdlen = 0;
+		done = core_Free42To42(&pc, (unsigned char *)cmdbuf, &cmdlen);
+        if (buflen + cmdlen > 1000) {
+            shell_write(buf, buflen);
+            buflen = 0;
+        }
+		for (i = 0; i < cmdlen; i++) {
+            buf[buflen++] = cmdbuf[i];
+		}
+	} while (!done && pc < prgms[index].size);
+    if (buflen > 0)
+        shell_write(buf, buflen);
+    current_prgm = saved_prgm;
+    return 0;
+}
+
+/* Free42 to 42 suffix translator
+ *
+ */
+void core_Free42To42_suffix(arg_struct *arg, unsigned char *buf, int *pt) {
+	unsigned char suffix = 0;
+
+	if (arg->type != ARGTYPE_NONE) {	
+		switch (arg->type) {
+			case ARGTYPE_IND_NUM :
+				suffix = 0x80;
+			case ARGTYPE_NUM :
+				suffix += arg->val.num;
+				break;
+			case ARGTYPE_IND_STK :
+				suffix = 0x80;
+			case ARGTYPE_STK :
+				switch (arg->val.stk) {
+					case 'X' :
+						suffix += 0x73;
+						break;
+					case 'Y' :
+						suffix += 0x72;
+						break;
+					case 'Z' :
+						suffix += 0x71;
+						break;
+					case 'T' :
+						suffix += 0x70;
+						break;
+					case 'L' :
+						suffix += 0x74;
+						break;
+				}
+				break;
+			case ARGTYPE_LCLBL :
+				if (arg->val.lclbl >= 'A' && arg->val.lclbl <= 'J') {
+					suffix = arg->val.lclbl - 'A' + 0x66;
+				}
+				else if (arg->val.lclbl >= 'a' && arg->val.lclbl <= 'e') {
+					suffix = arg->val.lclbl - 'a' + 0x7b;
+				}
+				break;
+			//default:
+				/* Shouldn't happen */
+				/* Values not handled above are ARGTYPE_NEG_NUM,
+				 * which is converted to ARGTYPE_NUM by
+				 * get_next_command(); ARGTYPE_DOUBLE, which only
+                 * occurs with CMD_NUMBER, which is handled in the
+                 * special-case section, above; ARGTYPE_COMMAND,
+                 * which is handled in the special-case section;
+                 * and ARGTYPE_LBLINDEX, which is converted to
+                 * ARGTYPE_STR before being stored in a program.
+                 */
+		}
+		buf[(*pt)++] = suffix;
+     }
+}
+
+/* Free42 to 42 standards instruction translator
+ *
+ */
+void core_Free42To42_standard(int4 hp42s_code, arg_struct *arg, unsigned char *buf, int *pt) {
+	int i;
+
+    if (arg->type == ARGTYPE_STR || arg->type == ARGTYPE_IND_STR) {
+		// 42s extended  parametrized functions
+		buf[(*pt)++] = 0xf1 + arg->length;
+		buf[(*pt)++] = (arg->type == ARGTYPE_STR) ? hp42s_code >> 16 : (hp42s_code >> 16) | 0x08;
+		for (i = 0; i < arg->length; i++) {
+			buf[(*pt)++] = arg->val.text[i];
+		}
+	}
+	else {
+		if ((hp42s_code >> 8) & 0xff) {
+			buf[(*pt)++] = hp42s_code >> 8;
+		}
+		buf[(*pt)++] = hp42s_code;
+		core_Free42To42_suffix(arg, buf, pt);
+	}
+}
+
+/* Free42 to 42 lbl translator
+ *
+ */
+void core_Free42To42_lbl(int4 hp42s_code, arg_struct *arg, unsigned char *buf, int *pt) {
+	int i;
+
+	if (arg->type == ARGTYPE_NUM && arg->val.num <= 14) {
+		buf[(*pt)++] = 0x01 + arg->val.num;
+	}
+	else if (arg->type == ARGTYPE_STR) {
+		buf[(*pt)++] = 0xc0;
+		buf[(*pt)++] = 0x00;
+		buf[(*pt)++] = 0xf1 + arg->length;
+		buf[(*pt)++] = 0x00;
+		for (i = 0; i < arg->length; i++) {
+			buf[(*pt)++] = arg->val.text[i];
+		}
+ 	}
+	else {
+		core_Free42To42_standard(hp42s_code, arg, buf, pt);
+	}
+}
+
+/* Free42 to 42 input translator
+ *
+ */
+void core_Free42To42_input(int4 hp42s_code, arg_struct *arg, unsigned char *buf, int *pt) {
+	if (arg->type == ARGTYPE_IND_NUM || arg->type == ARGTYPE_IND_STK) {
+		// change code on the fly
+		hp42s_code = 0x61c5f2ee;
+		}
+	core_Free42To42_standard(hp42s_code, arg, buf, pt);
+}
+
+/* Free42 to 42 xeq translator
+ *
+ */
+void core_Free42To42_xeq(int4 hp42s_code, arg_struct *arg, unsigned char *buf, int *pt) {
+	int i;
+
+	if (arg->type == ARGTYPE_NUM || arg->type == ARGTYPE_LCLBL) {
+		hp42s_code = 0x71a7e000;
+		core_Free42To42_standard(hp42s_code, arg, buf, pt);
+	}
+	else if (arg->type == ARGTYPE_STR) {
+        buf[(*pt)++] = 0x1e;
+        buf[(*pt)++] = 0xf0 + arg->length;
+		for (i = 0; i < arg->length; i++) {
+			buf[(*pt)++] = arg->val.text[i];
+		}
+	}
+	else {
+		core_Free42To42_standard(hp42s_code, arg, buf, pt);
+	}
+}
+
+/* Free42 to 42 gto translator
+ *
+ */
+void core_Free42To42_gto(int4 hp42s_code, arg_struct *arg, unsigned char *buf, int *pt) {
+	int i;
+
+	if (arg->type == ARGTYPE_NUM && arg->val.num <= 14) {
+		buf[(*pt)++] = 0xb1 + arg->val.num;
+		buf[(*pt)++] = 0x00;
+	}
+	else if (arg->type == ARGTYPE_NUM || arg->type == ARGTYPE_LCLBL) {
+		hp42s_code = 0x81a6d000;
+		core_Free42To42_standard(hp42s_code, arg, buf, pt);
+	}
+	else if (arg->type == ARGTYPE_IND_NUM || arg->type == ARGTYPE_IND_STK) {
+		buf[(*pt)++] = 0xae;
+		arg->type = (arg->type == ARGTYPE_IND_NUM) ? ARGTYPE_NUM : ARGTYPE_STK;
+		core_Free42To42_suffix(arg, buf, pt);;
+	}
+	else if (arg->type == ARGTYPE_STR) {
+        buf[(*pt)++] = 0x1d;
+        buf[(*pt)++] = 0xf0 + arg->length;
+		for (i = 0; i < arg->length; i++) {
+			buf[(*pt)++] = arg->val.text[i];
+		}
+	}
+	else {
+		core_Free42To42_standard(hp42s_code, arg, buf, pt);
+	}
+}
+
+/* Free42 to 42 number translator
+ *
+ */
+void core_Free42To42_number(arg_struct *arg, unsigned char *buf, int *pt) {
+	char *p;
+	char dot, c;
+
+	p = phloat2program(arg->val_d);
+	dot = flags.f.decimal_point ? '.' : ',';
+    while ((c = *p++) != 0) {
+		if (c >= '0' && c <= '9') {
+	        buf[(*pt)++] = c - 0x20;
+			c = c - 0x20;
+		}
+		else if (c == dot) {
+			buf[(*pt)++] = 0x1a;
+		}
+		else if (c == 24) {
+			buf[(*pt)++] = 0x1b;
+		}
+		else if (c == '-') {
+			buf[(*pt)++] = 0x1c;
+		}
+		else {
+			/* Should not happen */
+			continue;
+		}
+	}
+	buf[(*pt)++] = 0x00;
+}
+
+/* Free42 to 42 string translator
+ *
+ */
+void core_Free42To42_string(arg_struct *arg, unsigned char *buf, int *pt) {
+	int i;
+
+	buf[(*pt)++] = 0xf0 + arg->length;
+	for (i = 0; i < arg->length; i++) {
+		buf[(*pt)++] = arg->val.text[i];
+	}
+ }
+
+/* Free42 to 42 assign nn translator
+ *
+ */
+void core_Free42To42_asgn(int4 hp42s_code, arg_struct *arg, unsigned char *buf, int *pt) {
+	int i;
+	const command_spec *cs;
+
+	if (arg->type == ARGTYPE_STR) {
+		buf[(*pt)++] = 0xf2 + arg->length;
+		buf[(*pt)++] = 0xc0;
+		for (i = 0; i < arg->length; i++) {
+			buf[(*pt)++] = arg->val.text[i];
+		}
+	}
+	else {
+		/* arg.type == ARGTYPE_COMMAND; we don't use that
+		 * any more, but just to be safe (in case anyone ever 
+		 * actually used this in a program), we handle it
+		 * anyway.
+		 */
+		cs = cmdlist(arg->val.cmd);
+		buf[(*pt)++] = 0xf2 + cs->name_length;
+		buf[(*pt)++] = 0xf0;
+		for (i = 0; i < cs->name_length; i++) {
+			buf[(*pt)++] = cs->name[i];
+		}
+	}
+	buf[(*pt)++] = hp42s_code;
+}
+
+/* Free42 to 42 key nn xeq / gto translator
+ *
+ */
+void core_Free42To42_key(int4 hp42s_code, arg_struct *arg, unsigned char *buf, int *pt) {
+	int i, keyCode;
+
+	keyCode = hp42s_code >> 16;
+    if (arg->type == ARGTYPE_STR || arg->type == ARGTYPE_IND_STR){
+		buf[(*pt)++] = 0xf2 + arg->length;
+		buf[(*pt)++] = (arg->type == ARGTYPE_STR) ? keyCode : keyCode | 0x08;
+       	buf[(*pt)++] = hp42s_code;
+		for (i = 0; i < arg->length; i++) {
+			buf[(*pt)++] = arg->val.text[i];
+		}
+	}
+	else {
+		buf[(*pt)++] = 0xf3;
+		buf[(*pt)++] = keyCode | 0x20;
+       	buf[(*pt)++] = hp42s_code;
+		core_Free42To42_suffix(arg, buf, pt);
+	}
+}
+
+/* Compile instructions
+ *
+ * translate command to lif format
+ * caller has to save / set global current_prgm
+ * high byte flags :
+ *   0x00 - normal
+ *   0x01 - sto
+ *   0x02 - rcl
+ *   0x03 - fix /sci /eng
+ *   0x04 - size
+ *   0x05 - lbl
+ *   0x06 - input
+ *   0x07 - xeq
+ *   0x08 - gto
+ *   0x09 - end
+ *   0x0a - number
+ *   0x0b - string
+ *   0x0c - assign
+ *   0x0d - key n xeq / gto
+ *   0x0e - xrom
+ *   0x0f - invalid
+ */
+int core_Free42To42 (int4 *pc, unsigned char *buf, int *pt) {
+    int cmd;
+    arg_struct arg;
+    uint4 hp42s_code;
+	int done = 0;
+
+    get_next_command(pc, &cmd, &arg, 0);
+	hp42s_code = cmdlist(cmd)->hp42s_code;
+	// use high nybble to deal with special cases
+	switch (hp42s_code >> 28) {
+		case 0x00 :
+			core_Free42To42_standard(hp42s_code, &arg, buf, pt);
+			break;
+		case 0x01 :
+		case 0x02 :
+			if (arg.type == ARGTYPE_NUM && arg.val.num <= 15) {
+				// short STO / RCL
+				buf[(*pt)++] = ((cmd == CMD_RCL) ? 0x20 : 0x30) + arg.val.num;
+			}
+			else {
+				core_Free42To42_standard(hp42s_code, &arg, buf, pt);
+			}
+			break;
+		case 0x03 :
+			if (arg.type == ARGTYPE_NUM && arg.val.num > 9) {
+				// extended fix / sci /eng
+				buf[(*pt)++] = 0xf1;
+				buf[(*pt)++] = (unsigned char)(((arg.val.num + 3) << 4) + ((hp42s_code & 0x0f) - 7));
+			}
+			else {
+				core_Free42To42_standard(hp42s_code , &arg, buf, pt);
+			}
+			break;
+		case 0x04 :
+			// size
+			buf[(*pt)++] = 0xf3;
+			buf[(*pt)++] = 0xf7;
+			buf[(*pt)++] = arg.val.num >> 8;
+			buf[(*pt)++] = arg.val.num & 0xff;
+			break;
+		case 0x05 :
+			core_Free42To42_lbl(hp42s_code, &arg, buf, pt);
+			break;
+		case 0x06 :
+			core_Free42To42_input(hp42s_code, &arg, buf, pt);
+			break;
+		case 0x07 :
+			core_Free42To42_xeq(hp42s_code, &arg, buf, pt);
+			break;
+		case 0x08 :
+			core_Free42To42_gto(hp42s_code, &arg, buf, pt);
+			break;
+		case 0x09 :
+			// end
+			buf[(*pt)++] = 0xc0;
+			buf[(*pt)++] = 0x00;
+			buf[(*pt)++] = 0x0d;
+			done = 1;
+			break;
+		case 0x0a :
+			core_Free42To42_number(&arg, buf, pt);
+			break;
+		case 0x0b :
+			core_Free42To42_string(&arg, buf, pt);
+			break;
+		case 0x0c :
+			core_Free42To42_asgn(hp42s_code, &arg, buf, pt);
+			break;
+		case 0x0d :
+			core_Free42To42_key(hp42s_code, &arg, buf, pt);
+			break;
+		case 0x0e :
+			// xrom
+            buf[(*pt)++] = (0xa0 + ((arg.val.num >> 8) & 7));
+            buf[(*pt)++] = arg.val.num;
+			break;
+	}
+	return done;
+}
+
 int4 core_program_size(int prgm_index) {
     int4 pc = 0;
     int cmd;
@@ -962,7 +1363,7 @@ int4 core_program_size(int prgm_index) {
     do {
         get_next_command(&pc, &cmd, &arg, 0);
         hp42s_code = cmdlist(cmd)->hp42s_code;
-        code_flags = hp42s_code >> 24;
+        code_flags = (hp42s_code >> 24) & 0x0f;
         //code_name = hp42s_code >> 16;
         code_std_1 = hp42s_code >> 8;
         //code_std_2 = hp42s_code;
@@ -1074,311 +1475,6 @@ int core_export_programs(int count, const int *indexes,
     }
     return 0;
 }
-
-static int hp42tofree42[] = {
-    /* Flag values: 0 = simple 1-byte command; 1 = 1-byte command with
-     * embedded argument; 2 = 2-byte command, argument follows;
-     * 3 = everything else, special case handling required.
-     */
-
-    /* 00-0F */
-    /* NULL, LBL 00-14 */
-    CMD_NULL  | 0x3000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-    CMD_LBL   | 0x1000,
-
-    /* 10-1F */
-    /* 0-9, ., E, -, GTO "", XEQ "", W "" */
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-
-    /* 20-2F */
-    /* RCL 00-15 */
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-    CMD_RCL   | 0x1000,
-
-    /* 30-3F */
-    /* STO 00-15 */
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-    CMD_STO   | 0x1000,
-
-    /* 40-4F */
-    CMD_ADD         | 0x0000,
-    CMD_SUB         | 0x0000,
-    CMD_MUL         | 0x0000,
-    CMD_DIV         | 0x0000,
-    CMD_X_LT_Y      | 0x0000,
-    CMD_X_GT_Y      | 0x0000,
-    CMD_X_LE_Y      | 0x0000,
-    CMD_SIGMAADD    | 0x0000,
-    CMD_SIGMASUB    | 0x0000,
-    CMD_HMSADD      | 0x0000,
-    CMD_HMSSUB      | 0x0000,
-    CMD_MOD         | 0x0000,
-    CMD_PERCENT     | 0x0000,
-    CMD_PERCENT_CH  | 0x0000,
-    CMD_TO_REC      | 0x0000,
-    CMD_TO_POL      | 0x0000,
-
-    /* 50-5F */
-    CMD_LN         | 0x0000,
-    CMD_SQUARE     | 0x0000,
-    CMD_SQRT       | 0x0000,
-    CMD_Y_POW_X    | 0x0000,
-    CMD_CHS        | 0x0000,
-    CMD_E_POW_X    | 0x0000,
-    CMD_LOG        | 0x0000,
-    CMD_10_POW_X   | 0x0000,
-    CMD_E_POW_X_1  | 0x0000,
-    CMD_SIN        | 0x0000,
-    CMD_COS        | 0x0000,
-    CMD_TAN        | 0x0000,
-    CMD_ASIN       | 0x0000,
-    CMD_ACOS       | 0x0000,
-    CMD_ATAN       | 0x0000,
-    CMD_TO_DEC     | 0x0000,
-
-    /* 60-6F */
-    CMD_INV     | 0x0000,
-    CMD_ABS     | 0x0000,
-    CMD_FACT    | 0x0000,
-    CMD_X_NE_0  | 0x0000,
-    CMD_X_GT_0  | 0x0000,
-    CMD_LN_1_X  | 0x0000,
-    CMD_X_LT_0  | 0x0000,
-    CMD_X_EQ_0  | 0x0000,
-    CMD_IP      | 0x0000,
-    CMD_FP      | 0x0000,
-    CMD_TO_RAD  | 0x0000,
-    CMD_TO_DEG  | 0x0000,
-    CMD_TO_HMS  | 0x0000,
-    CMD_TO_HR   | 0x0000,
-    CMD_RND     | 0x0000,
-    CMD_TO_OCT  | 0x0000,
-    
-    /* 70-7F */
-    CMD_CLSIGMA  | 0x0000,
-    CMD_SWAP     | 0x0000,
-    CMD_PI       | 0x0000,
-    CMD_CLST     | 0x0000,
-    CMD_RUP      | 0x0000,
-    CMD_RDN      | 0x0000,
-    CMD_LASTX    | 0x0000,
-    CMD_CLX      | 0x0000,
-    CMD_X_EQ_Y   | 0x0000,
-    CMD_X_NE_Y   | 0x0000,
-    CMD_SIGN     | 0x0000,
-    CMD_X_LE_0   | 0x0000,
-    CMD_MEAN     | 0x0000,
-    CMD_SDEV     | 0x0000,
-    CMD_AVIEW    | 0x0000,
-    CMD_CLD      | 0x0000,
-
-    /* 80-8F */
-    CMD_DEG     | 0x0000,
-    CMD_RAD     | 0x0000,
-    CMD_GRAD    | 0x0000,
-    CMD_ENTER   | 0x0000,
-    CMD_STOP    | 0x0000,
-    CMD_RTN     | 0x0000,
-    CMD_BEEP    | 0x0000,
-    CMD_CLA     | 0x0000,
-    CMD_ASHF    | 0x0000,
-    CMD_PSE     | 0x0000,
-    CMD_CLRG    | 0x0000,
-    CMD_AOFF    | 0x0000,
-    CMD_AON     | 0x0000,
-    CMD_OFF     | 0x0000,
-    CMD_PROMPT  | 0x0000,
-    CMD_ADV     | 0x0000,
-
-    /* 90-9F */
-    CMD_RCL       | 0x2000,
-    CMD_STO       | 0x2000,
-    CMD_STO_ADD   | 0x2000,
-    CMD_STO_SUB   | 0x2000,
-    CMD_STO_MUL   | 0x2000,
-    CMD_STO_DIV   | 0x2000,
-    CMD_ISG       | 0x2000,
-    CMD_DSE       | 0x2000,
-    CMD_VIEW      | 0x2000,
-    CMD_SIGMAREG  | 0x2000,
-    CMD_ASTO      | 0x2000,
-    CMD_ARCL      | 0x2000,
-    CMD_FIX       | 0x2000,
-    CMD_SCI       | 0x2000,
-    CMD_ENG       | 0x2000,
-    CMD_TONE      | 0x2000,
-
-    /* A0-AF */
-    /* XROM (+ 42S ext), GTO/XEQ IND, SPARE1 */
-    CMD_NULL   | 0x3000,
-    CMD_NULL   | 0x3000,
-    CMD_NULL   | 0x3000,
-    CMD_NULL   | 0x3000,
-    CMD_NULL   | 0x3000,
-    CMD_NULL   | 0x3000,
-    CMD_NULL   | 0x3000,
-    CMD_NULL   | 0x3000,
-    CMD_SF     | 0x2000,
-    CMD_CF     | 0x2000,
-    CMD_FSC_T  | 0x2000,
-    CMD_FCC_T  | 0x2000,
-    CMD_FS_T   | 0x2000,
-    CMD_FC_T   | 0x2000,
-    CMD_NULL   | 0x3000,
-    CMD_NULL   | 0x3000,
-
-    /* B0-BF */
-    /* SPARE2, GTO 00-14 */
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-
-    /* C0-CF */
-    /* GLOBAL */
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_NULL    | 0x3000,
-    CMD_X_SWAP  | 0x2000,
-    CMD_LBL     | 0x2000,
-
-    /* D0-DF */
-    /* 3-byte GTO */
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-
-    /* E0-EF */
-    /* 3-byte XEQ */
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-
-    /* F0-FF */
-    /* Strings + 42S ext */
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000,
-    CMD_NULL  | 0x3000
-};
 
 static int hp42ext[] = {
     /* Flag values: 0 = string, 1 = IND string, 2 = suffix, 3 = special,
@@ -1540,431 +1636,611 @@ static int getbyte(char *buf, int *bufptr, int *buflen, int maxlen) {
 }
 
 void core_import_programs(int (*progress_report)(const char *)) {
-    char buf[1000];
-    int i, nread = 0;
-    int need_to_rebuild_label_table = 0;
-
+    char buf[120];
+    int i, nread;
+	int eof_flag, done_flag;
     int pos = 0;
-    int byte1, byte2, suffix;
-    int cmd, flag, str_len;
-    int done_flag = 0;
-    arg_struct arg;
-    int assign = 0;
-    int at_end = 1;
-    int instrcount = -1;
-    int report_label = 0;
-
     set_running(false);
 
     /* Set print mode to MAN during the import, to prevent store_command()
-     * from printing programs as they load
+     * from printing programs as they load, though vey usefull for troubleshooting !
      */
     int saved_trace = flags.f.trace_print;
     int saved_normal = flags.f.normal_print;
     flags.f.trace_print = 0;
     flags.f.normal_print = 0;
-
-    while (!done_flag) {
-        skip:
-        if (progress_report != NULL) {
-            /* Poll the progress dialog every 100 instructions, in case
-             * we're reading a bogus file: normally, we only update the
-             * dialog when we encounter a GLOBAL, and that should be often
-             * enough when reading legitimate HP-42S programs, but if we're
-             * reading garbage, it may not happen at all, and that would
-             * mean the user would get no chance to intervene.
-             */
-            if (++instrcount == 100) {
-                if (progress_report(NULL))
-                    goto done;
-                instrcount = 0;
-            }
-        }
-        byte1 = getbyte(buf, &pos, &nread, 1000);
-        if (byte1 == -1)
-            goto done;
-        cmd = hp42tofree42[byte1];
-        flag = cmd >> 12;
-        cmd &= 0x0FFF;
-        if (flag == 0) {
-            arg.type = ARGTYPE_NONE;
-            goto store;
-        } else if (flag == 1) {
-            arg.type = ARGTYPE_NUM;
-            arg.val.num = byte1 & 15;
-            if (cmd == CMD_LBL)
-                arg.val.num--;
-            goto store;
-        } else if (flag == 2) {
-            suffix = getbyte(buf, &pos, &nread, 1000);
-            if (suffix == -1)
-                goto done;
-            goto do_suffix;
-        } else /* flag == 3 */ {
-            if (byte1 == 0x00)
-                /* NULL */
-                goto skip;
-            else if (byte1 >= 0x10 && byte1 <= 0x1C) {
-                /* Number */
-                char numbuf[19];
-                int numlen = 0;
-                int s2d_err;
-                do {
-                    if (byte1 == 0x1A)
-                        byte1 = flags.f.decimal_point ? '.' : ',';
-                    else if (byte1 == 0x1B)
-                        byte1 = 24;
-                    else if (byte1 == 0x1C)
-                        byte1 = '-';
-                    else
-                        byte1 += '0' - 0x10;
-                    numbuf[numlen++] = byte1;
-                    byte1 = getbyte(buf, &pos, &nread, 1000);
-                } while (byte1 >= 0x10 && byte1 <= 0x1C);
-                if (byte1 == -1)
-                    done_flag = 1;
-                else if (byte1 != 0x00)
-                    pos--;
-                s2d_err = string2phloat(numbuf, numlen, &arg.val_d);
-                switch (s2d_err) {
-                    case 0: /* OK */
-                        break;
-                    case 1: /* +overflow */
-                        arg.val_d = POS_HUGE_PHLOAT;
-                        break;
-                    case 2: /* -overflow */
-                        arg.val_d = NEG_HUGE_PHLOAT;
-                        break;
-                    case 3: /* +underflow */
-                        arg.val_d = POS_TINY_PHLOAT;
-                        break;
-                    case 4: /* -underflow */
-                        arg.val_d = NEG_TINY_PHLOAT;
-                        break;
-                    case 5: /* error */
-                        arg.val_d = 0;
-                        break;
-                }
-                cmd = CMD_NUMBER;
-                arg.type = ARGTYPE_DOUBLE;
-            } else if (byte1 == 0x1D || byte1 == 0x1E) {
-                cmd = byte1 == 0x1D ? CMD_GTO : CMD_XEQ;
-                str_len = getbyte(buf, &pos, &nread, 1000);
-                if (str_len == -1)
-                    goto done;
-                else if (str_len < 0x0F1) {
-                    pos--;
-                    goto skip;
-                } else
-                    str_len -= 0x0F0;
-                arg.type = ARGTYPE_STR;
-                goto do_string;
-            } else if (byte1 == 0x1F) {
-                /* "W" function (see HP-41C instruction table */
-                goto skip;
-            } else if (byte1 >= 0x0A0 && byte1 <= 0x0A7) {
-                /* XROM & parameterless HP-42S extensions.
-                 * I don't want to build a reverse look-up table
-                 * for these, so instead I just do a linear search
-                 * on the cmdlist table.
-                 */
-                uint4 code;
-                byte2 = getbyte(buf, &pos, &nread, 1000);
-                if (byte2 == -1)
-                    goto done;
-                code = (((unsigned int) byte1) << 8) | byte2;
-                for (i = 0; i < CMD_SENTINEL; i++)
-                    if (cmdlist(i)->hp42s_code == code) {
-                        if ((cmdlist(i)->flags & FLAG_HIDDEN) != 0)
-                            break;
-                        cmd = i;
-                        arg.type = ARGTYPE_NONE;
-                        goto store;
-                    }
-                /* Not found; insert XROM instruction */
-                cmd = CMD_XROM;
-                arg.type = ARGTYPE_NUM;
-                arg.val.num = code & 0x07FF;
-                goto store;
-            } else if (byte1 == 0x0AE) {
-                /* GTO/XEQ IND */
-                suffix = getbyte(buf, &pos, &nread, 1000);
-                if (suffix == -1)
-                    goto done;
-                if ((suffix & 0x80) != 0)
-                    cmd = CMD_XEQ;
-                else {
-                    cmd = CMD_GTO;
-                    suffix |= 0x080;
-                }
-                goto do_suffix;
-            } else if (byte1 == 0x0AF || byte1 == 0x0B0) {
-                /* SPARE functions (see HP-41C instruction table */
-                goto skip;
-            } else if (byte1 >= 0x0B1 && byte1 <= 0x0BF) {
-                /* 2-byte GTO */
-                byte2 = getbyte(buf, &pos, &nread, 1000);
-                if (byte2 == -1)
-                    goto done;
-                cmd = CMD_GTO;
-                arg.type = ARGTYPE_NUM;
-                arg.val.num = (byte1 & 15) - 1;
-                goto store;
-            } else if (byte1 >= 0x0C0 && byte1 <= 0x0CD) {
-                /* GLOBAL */
-                byte2 = getbyte(buf, &pos, &nread, 1000);
-                if (byte2 == -1)
-                    goto done;
-                str_len = getbyte(buf, &pos, &nread, 1000);
-                if (str_len == -1)
-                    goto done;
-                if (str_len < 0x0F1) {
-                    /* END */
-                    if (progress_report != NULL && progress_report("END"))
-                        goto done;
-                    at_end = 1;
-                    goto skip;
-                } else {
-                    /* LBL "" */
-                    str_len -= 0x0F1;
-                    byte2 = getbyte(buf, &pos, &nread, 1000);
-                    if (byte2 == -1)
-                        goto done;
-                    cmd = CMD_LBL;
-                    arg.type = ARGTYPE_STR;
-                    if (progress_report != NULL)
-                        report_label = 1;
-                    goto do_string;
-                }
-            } else if (byte1 >= 0x0D0 && byte1 <= 0x0EF) {
-                /* 3-byte GTO & XEQ */
-                byte2 = getbyte(buf, &pos, &nread, 1000);
-                if (byte2 == -1)
-                    goto done;
-                suffix = getbyte(buf, &pos, &nread, 1000);
-                if (suffix == -1)
-                    goto done;
-                cmd = byte1 <= 0x0DF ? CMD_GTO : CMD_XEQ;
-                suffix &= 0x7F;
-                goto do_suffix;
-            } else /* byte1 >= 0xF0 && byte1 <= 0xFF */ {
-                /* Strings and parameterized HP-42S extensions */
-                if (byte1 == 0x0F0) {
-                    /* Zero-length strings can only be entered synthetically
-                     * on the HP-41; they act as NOPs and are sometimes used
-                     * right after ISG or DSE.
-                     * I would be within my rights to drop these instructions
-                     * on the floor -- the real 42S doesn't deal with them
-                     * all that gracefully either -- but I'm just too nice,
-                     * so I convert them to |-"", which is also a NOP.
-                     */
-                    cmd = CMD_STRING;
-                    arg.type = ARGTYPE_STR;
-                    arg.length = 1;
-                    arg.val.text[0] = 127;
-                    goto store;
-                }
-                byte2 = getbyte(buf, &pos, &nread, 1000);
-                if (byte1 == 0x0F1) {
-                    switch (byte2) {
-                        case 0x0D5: cmd = CMD_FIX; arg.val.num = 10; break;
-                        case 0x0D6: cmd = CMD_SCI; arg.val.num = 10; break;
-                        case 0x0D7: cmd = CMD_ENG; arg.val.num = 10; break;
-                        case 0x0E5: cmd = CMD_FIX; arg.val.num = 11; break;
-                        case 0x0E6: cmd = CMD_SCI; arg.val.num = 11; break;
-                        case 0x0E7: cmd = CMD_ENG; arg.val.num = 11; break;
-                        default: goto plain_string;
-                    }
-                    arg.type = ARGTYPE_NUM;
-                    goto store;
-                }
-                if ((byte2 & 0x080) == 0 || byte1 < 0x0F2) {
-                    /* String */
-                    int i;
-                    plain_string:
-                    str_len = byte1 - 0x0F0;
-                    pos--;
-                    cmd = CMD_STRING;
-                    arg.type = ARGTYPE_STR;
-                    do_string:
-                    for (i = 0; i < str_len; i++) {
-                        suffix = getbyte(buf, &pos, &nread, 1000);
-                        if (suffix == -1)
-                            goto done;
-                        arg.val.text[i] = suffix;
-                    }
-                    arg.length = str_len;
-                    if (assign) {
-                        assign = 0;
-                        suffix = getbyte(buf, &pos, &nread, 1000);
-                        if (suffix == -1)
-                            goto done;
-                        if (suffix > 17) {
-                            /* Bad assign... Fix the command to the string
-                             * it would have been if I had known this
-                             * earlier.
-                             */
-                            for (i = arg.length; i > 0; i--)
-                                arg.val.text[i] = arg.val.text[i - 1];
-                            arg.val.text[0] = (char) 0xC0;
-                            arg.val.text[arg.length + 1] = suffix;
-                            arg.length += 2;
-                        } else {
-                            cmd += suffix;
-                        }
-                    }
-                    if (report_label) {
-                        char s[52];
-                        int sl = hp2ascii(s + 1, arg.val.text, arg.length);
-                        s[0] = s[sl + 1] = '"';
-                        s[sl + 2] = 0;
-                        report_label = 0;
-                        if (progress_report(s))
-                            goto done;
-                    }
-                    goto store;
-                } else {
-                    /* Parameterized HP-42S extension */
-                    cmd = hp42ext[byte2 - 0x080];
-                    flag = cmd >> 12;
-                    cmd &= 0x0FFF;
-                    if (flag == 0 || flag == 1) {
-                        arg.type = flag == 0 ? ARGTYPE_STR
-                                                : ARGTYPE_IND_STR;
-                        str_len = byte1 - 0x0F1;
-                        goto do_string;
-                    } else if (flag == 2) {
-                        int ind;
-                        if (byte1 != 0x0F2)
-                            goto plain_string;
-                        suffix = getbyte(buf, &pos, &nread, 1000);
-                        if (suffix == -1)
-                            goto done;
-                        do_suffix:
-                        ind = (suffix & 0x080) != 0;
-                        suffix &= 0x7F;
-                        if (!ind && suffix >= 102 && suffix <= 111) {
-                            arg.type = ARGTYPE_LCLBL;
-                            arg.val.lclbl = 'A' + (suffix - 102);
-                        } else if (!ind && suffix >= 123) {
-                            arg.type = ARGTYPE_LCLBL;
-                            arg.val.lclbl = 'a' + (suffix - 123);
-                        } else if (suffix >= 112 && suffix <= 116) {
-                            arg.type = ind ? ARGTYPE_IND_STK : ARGTYPE_STK;
-                            switch (suffix) {
-                                case 112: arg.val.stk = 'T'; break;
-                                case 113: arg.val.stk = 'Z'; break;
-                                case 114: arg.val.stk = 'Y'; break;
-                                case 115: arg.val.stk = 'X'; break;
-                                case 116: arg.val.stk = 'L'; break;
-                            }
-                        } else {
-                            arg.type = ind ? ARGTYPE_IND_NUM : ARGTYPE_NUM;
-                            arg.val.num = suffix;
-                        }
-                        goto store;
-                    } else if (flag == 3) {
-                        if (byte2 == 0x0C0) {
-                            /* ASSIGN */
-                            str_len = byte1 - 0x0F2;
-                            if (str_len == 0)
-                                goto plain_string;
-                            assign = 1;
-                            cmd = CMD_ASGN01;
-                            arg.type = ARGTYPE_STR;
-                            goto do_string;
-                        } else if (byte2 == 0x0C2 || byte2 == 0x0C3
-                                || byte2 == 0x0CA || byte2 == 0x0CB) {
-                            /* KEYG/KEYX name, KEYG/KEYX IND name */
-                            str_len = byte1 - 0x0F2;
-                            if (str_len == 0)
-                                goto plain_string;
-                            cmd = byte2 == 0x0C2 || byte2 == 0x0CA
-                                    ? CMD_KEY1X : CMD_KEY1G;
-                            suffix = getbyte(buf, &pos, &nread, 1000);
-                            if (suffix == -1)
-                                goto done;
-                            if (suffix < 1 || suffix > 9) {
-                                /* Treat as plain string. Alas, it is
-                                 * not safe to back up 2 positions, so
-                                 * I do the whole thing here.
-                                 */
-                                int i;
-                                bad_keyg_keyx:
-                                cmd = CMD_STRING;
-                                arg.type = ARGTYPE_STR;
-                                arg.length = str_len + 2;
-                                arg.val.text[0] = byte2;
-                                arg.val.text[1] = suffix;
-                                for (i = 2; i < arg.length; i++) {
-                                    int c = getbyte(buf, &pos, &nread,1000);
-                                    if (c == -1)
-                                        goto done;
-                                    arg.val.text[i] = c;
-                                }
-                                goto store;
-                            }
-                            cmd += suffix - 1;
-                            arg.type = byte2 == 0x0C2 || byte2 == 0x0C3
-                                        ? ARGTYPE_STR : ARGTYPE_IND_STR;
-                            goto do_string;
-                        } else if (byte2 == 0x0E2 || byte2 == 0x0E3) {
-                            /* KEYG/KEYX suffix */
-                            if (byte1 != 0x0F3)
-                                goto plain_string;
-                            suffix = getbyte(buf, &pos, &nread, 1000);
-                            if (suffix == -1)
-                                goto done;
-                            if (suffix < 1 || suffix > 9)
-                                goto bad_keyg_keyx;
-                            cmd = byte2 == 0x0E2 ? CMD_KEY1X : CMD_KEY1G;
-                            cmd += suffix - 1;
-                            suffix = getbyte(buf, &pos, &nread, 1000);
-                            if (suffix == -1)
-                                goto done;
-                            goto do_suffix;
-                        } else /* byte2 == 0x0F7 */ {
-                            /* SIZE */
-                            int sz;
-                            if (byte1 != 0x0F3)
-                                goto plain_string;
-                            suffix = getbyte(buf, &pos, &nread, 1000);
-                            if (suffix == -1)
-                                goto done;
-                            sz = suffix << 8;
-                            suffix = getbyte(buf, &pos, &nread, 1000);
-                            if (suffix == -1)
-                                goto done;
-                            sz += suffix;
-                            cmd = CMD_SIZE;
-                            arg.type = ARGTYPE_NUM;
-                            arg.val.num = sz;
-                            goto store;
-                        }
-                    } else /* flag == 4 */ {
-                        /* Illegal value; treat as plain string */
-                        goto plain_string;
-                    }
-                }
-            }
-        }
-        store:
-        if (at_end) {
-            goto_dot_dot();
-            at_end = 0;
-        }
-        store_command_after(&pc, cmd, &arg);
-        need_to_rebuild_label_table = 1;
-    }
-
-    done:
-    if (need_to_rebuild_label_table) {
-        rebuild_label_table();
-        update_catalog();
-    }
-
+	goto_dot_dot();
+	// let's fill the buffer
+	nread = shell_read(buf, 100);
+	eof_flag = (nread != 100) ? 1 : 0;
+	done_flag = 0;
+	while (!done_flag) {
+		core_42ToFree42((unsigned char*)buf, &pos, 30);
+		if (pos > (nread - 20)) {
+			if (!eof_flag) {
+				for (i=0; pos < nread;) {
+					buf[i++] = buf[pos++];
+				}
+				pos	= 0;
+				nread = shell_read(&buf[i], 100);
+				eof_flag = (nread != 100) ? 1 : 0;
+				nread += i;
+			}
+			else if (pos >= nread) {
+				done_flag = 1;
+			}
+		}
+	}
+	// always 
+    rebuild_label_table();
+    update_catalog();
+	// Restore print mode
     flags.f.trace_print = saved_trace;
     flags.f.normal_print = saved_normal;
+}
+
+/* read string to buf
+ *
+ *
+ */
+void core_42ToFree42_string (unsigned char *buf, int pt, int len, arg_struct *arg) {
+	int i;
+	for (i = 0; i < len; i++) {
+		arg->val.text[i] = buf[pt + i];
+	}
+	arg->length = i;
+}
+
+/* Decode Alpha Gto / Xeq / W
+ *
+ * W will result to CMS_NULL, cf remark about len byte not being 0xfn
+ */
+void core_42ToFree42_alphaGto (unsigned char *buf, int *pt) {
+	int cmd;
+	arg_struct arg;
+	switch 	(buf[*pt]) {
+		case 0x1d :
+			cmd = CMD_GTO;
+			arg.type = ARGTYPE_STR;
+			break;
+		case 0x1e :
+			cmd = CMD_XEQ;
+			arg.type = ARGTYPE_STR;
+			break;
+		case 0x1f :
+			// W, treat as null but consume string
+			cmd = CMD_NONE;
+			arg.type = ARGTYPE_NONE;
+			break;
+	}
+	core_42ToFree42_string (buf, (*pt) + 2, buf[(*pt)+1] & 0x0f, &arg);
+	// should not append !!!
+    // 'Extend Your HP41' section 15.7 says that if the high nybble of 
+    //   the second byte is not f, then the pc is only incremented by 2 
+	(*pt) += ((buf[(*pt) + 1] >> 4) == 0xf) ? (buf[(*pt) + 1] & 0xf) + 2 : 2;
+	store_command_after(&pc, cmd, &arg);
+}
+
+/* builds up digits
+ *
+ * take care of len to avoid infinite loop
+ */
+#define MAXDIGITSBUF 20
+void core_42ToFree42_number (unsigned char *buf, int *pt, int l) {
+	int cmd;
+	arg_struct arg;
+	int i = 0;
+	int str2PhloatErr;
+	char DigitsBuf[MAXDIGITSBUF];
+	cmd = CMD_NUMBER;
+	arg.type = ARGTYPE_DOUBLE;
+	do  {
+		switch (buf[*pt]) {
+			case 0x1a :
+				DigitsBuf[i++] = flags.f.decimal_point ? '.' : ',';
+				break;
+			case 0x1b :
+				DigitsBuf[i++] = 0x18;
+				break;
+			case 0x1c :
+				DigitsBuf[i++] = '-';
+				break;
+			default :
+				DigitsBuf[i++] = buf[*pt] + 0x20;
+		}
+		(*pt)++;
+	} while ((buf[*pt] >= 0x10) && (buf[*pt] <= 0x1C) && (i < l) && (i <MAXDIGITSBUF));
+	if (buf[*pt] == 0x00) {
+		// ignore 0x00 digit separator
+		(*pt)++;
+	}
+	str2PhloatErr = string2phloat(DigitsBuf, i, &arg.val_d);
+	if (str2PhloatErr == 5) {
+		arg.val_d = 0;
+	}
+	else if (str2PhloatErr == 4) {
+        arg.val_d = NEG_TINY_PHLOAT;
+	}
+	else if (str2PhloatErr == 3) {
+	    arg.val_d = POS_TINY_PHLOAT;
+	}
+	else if (str2PhloatErr == 2) {
+        arg.val_d = NEG_HUGE_PHLOAT;
+	}
+	else if (str2PhloatErr == 1) {
+	    arg.val_d = POS_HUGE_PHLOAT;
+	}
+	store_command_after(&pc, cmd, &arg);
+}
+
+/* decode suffix
+ *
+ *
+ */
+void core_42ToFree42_suffix (unsigned char suffix, arg_struct *arg) {
+	bool ind;
+	ind = (suffix & 0x80) ? true : false;
+	suffix &= 0x7f;
+	if (!ind && (suffix >= 0x66) && (suffix <= 0x6f)) {
+		arg->type = ARGTYPE_LCLBL;
+        arg->val.lclbl = 'A' + (suffix - 0x66);
+	}
+	else if (!ind && suffix >= 0x7b) {
+		arg->type = ARGTYPE_LCLBL;
+		arg->val.lclbl = 'a' + (suffix - 0x7b);
+	}
+	else if (suffix >= 0x70 && suffix <= 0x74) {
+		arg->type = ind ? ARGTYPE_IND_STK : ARGTYPE_STK;
+		switch (suffix) {
+			case 0x70 :
+				arg->val.stk = 'T';
+				break;
+            case 0x71 :
+				arg->val.stk = 'Z';
+				break;
+            case 0x72 :
+				arg->val.stk = 'Y';
+				break;
+            case 0x73 :
+				arg->val.stk = 'X';
+				break;
+            case 0x74 :
+				arg->val.stk = 'L';
+				break;
+		}
+	}
+	else {
+		arg->type = ind ? ARGTYPE_IND_NUM : ARGTYPE_NUM;
+		arg->val.num = suffix;
+	}
+}
+
+/* Decode xrom (two bytes) instructions
+ *
+ * search in cmd array
+ */
+void core_42toFree42_xrom (unsigned char *buf, int *pt, int *cmd) {
+	int i;
+	uint4 inst;
+	i = 0;
+	inst = (uint4)((buf[*pt] << 8) + buf[(*pt)+1]);
+	do {
+		if ((inst == ((cmdlist(i)->hp42s_code) & 0xffff)) && ((cmdlist(i)->flags & FLAG_HIDDEN) == 0)) {
+			*cmd = i;
+			break;
+		}
+		i++;
+	} while (i < CMD_SENTINEL);
+	if (i != *cmd) {
+		i++;
+	}
+}
+
+/* Global labels / end
+ *
+ */
+void core_42ToFree42_globalEnd (unsigned char *buf, int *pt) {
+	int cmd;
+	arg_struct arg;
+	if (buf[(*pt) + 2] & 0x80) {
+		cmd = CMD_LBL;
+		arg.type = ARGTYPE_STR;
+		core_42ToFree42_string (buf, (*pt)+4, (buf[(*pt)+2] & 0x0f) - 1, &arg);
+		store_command_after(&pc, cmd, &arg);
+	}
+	else {
+		goto_dot_dot();
+	}
+	(*pt) += (buf[(*pt) + 2] & 0x80) ? (buf[(*pt) + 2] & 0x0f) + 3 : 3;
+}
+
+/* Text0, synthetic only
+ *
+ * special case
+ */
+void core_42ToFree42_string0 (unsigned char *buf, int *pt) {
+	int cmd;
+	arg_struct arg;
+	cmd = CMD_STRING;
+    arg.type = ARGTYPE_STR;
+    arg.length = 1;
+    arg.val.text[0] = 127;
+	(*pt)++;
+	store_command_after(&pc, cmd, &arg);
+}
+
+/* Text1, mixed text and hp42-s fix/sci/eng
+ *
+ */
+void core_42ToFree42_string1 (unsigned char *buf, int *pt) {
+	int cmd;
+	arg_struct arg;
+    arg.type = ARGTYPE_NUM;
+	switch (buf[(*pt)+1]) {
+		case 0xd5 :
+			cmd = CMD_FIX;
+			arg.val.num = 10;
+			break;
+		case 0xd6 :
+			cmd = CMD_SCI;
+			arg.val.num = 10;
+			break;
+		case 0xd7 :
+			cmd = CMD_ENG; 
+			arg.val.num = 10; 
+			break;
+		case 0xe5 :
+			cmd = CMD_FIX;
+			arg.val.num = 11;
+			break;
+		case 0xe6:
+			cmd = CMD_SCI;
+			arg.val.num = 11;
+			break;
+		case 0xe7:
+			cmd = CMD_ENG;
+			arg.val.num = 11;
+			break;
+		default :
+			cmd = CMD_STRING;
+			arg.type = ARGTYPE_STR;
+			core_42ToFree42_string (buf, (*pt) + 1, buf[*pt] & 0x0f, &arg);
+	}
+	(*pt) += (buf[*pt] & 0x0f) + 1;
+	store_command_after(&pc, cmd, &arg);
+}
+
+/* Textn, n > 2 & second byte < 0x80
+ *
+ */
+void core_42ToFree42_stringn (unsigned char *buf, int *pt) {
+	int cmd;
+	arg_struct arg;
+	cmd = CMD_STRING;
+	arg.type = ARGTYPE_STR;
+	core_42ToFree42_string (buf, (*pt) + 1, buf[*pt] & 0x0f, &arg);
+	(*pt) += (buf[*pt] & 0x0f) + 1;
+	store_command_after(&pc, cmd, &arg);
+}
+
+/* hp-42s extensions decoding
+ *
+ * from original Free42 parametrized extensions decoding
+ */
+void core_42ToFree42_42Ext (unsigned char *buf, int *pt) {
+	int cmd, flg;
+	arg_struct arg;
+    cmd = hp42ext[buf[(*pt)+1] & 0x7f] & 0x0fff;
+	flg = hp42ext[buf[(*pt)+1] & 0x7f] >> 12;
+	if (flg <= 1) {
+		arg.type = (flg == 0) ? ARGTYPE_STR : ARGTYPE_IND_STR;
+		core_42ToFree42_string(buf, (*pt) + 2, (buf[(*pt)] & 0x0f) -1, &arg);
+	}
+	else if ((flg == 2) && (buf[*pt] == 0xf2)) {
+		core_42ToFree42_suffix(buf[(*pt)+2], &arg);
+	}
+	else if (flg == 3) {
+		switch (buf[(*pt)+1]) {
+			case 0xc0 :
+				//ASSIGN
+				arg.type = ARGTYPE_STR;
+				if ((buf[*pt] <= 0xf2) || (buf[(*pt) + (buf[*pt] & 0x0f)] > 17)) {
+					cmd = CMD_STRING;
+					core_42ToFree42_string (buf, (*pt) + 1, buf[*pt] & 0x0f, &arg);
+				}
+				else {
+					cmd = CMD_ASGN01 + buf[(*pt) + (buf[*pt] & 0x0f)];
+					core_42ToFree42_string (buf, (*pt) + 2, (buf[*pt] & 0x0f) - 2, &arg);
+				}
+				break;
+			case 0xc2 :
+				// KEY # XEQ name
+			case 0xc3 :
+				// KEY # GTO name
+			case 0xca :
+				// KEY # XEQ IND name
+			case 0xcb :
+				// KEY # GTO IND name
+			case 0xe2 :
+				// KEY # XEQ lbl
+			case 0xe3 :
+				// KEY # GTO lbl
+				if ((buf[*pt] <= 0xf2) || (buf[(*pt) + 2] < 1) || (buf[(*pt) + 2] > 9)) {
+					cmd = CMD_STRING;
+					core_42ToFree42_string (buf, (*pt) + 1, (buf[*pt] & 0x0f), &arg);
+				}
+				else {
+					if ((buf[(*pt)+1] & 0x07) == 0x02) {
+						cmd = CMD_KEY1X + buf[(*pt) + 2] - 1;
+					}
+					else {
+						cmd = CMD_KEY1G + buf[(*pt) + 2] - 1;
+					}
+					if ((buf[(*pt)+1] & 0xf8) == 0xc0) {
+						arg.type = ARGTYPE_STR;
+						core_42ToFree42_string (buf, (*pt) + 3, buf[*pt] & 0x0f - 2, &arg);
+					}
+					else if ((buf[(*pt)+1] & 0xf8) == 0xc8) {
+						arg.type = ARGTYPE_IND_STR;
+						core_42ToFree42_string (buf, (*pt) + 3, buf[*pt] & 0x0f - 2, &arg);
+					}
+					else if (((buf[(*pt)+1] & 0xf8) == 0xe0) && (buf[*pt] == 0xf3)) {
+						core_42ToFree42_suffix((buf[(*pt) + 3]), &arg);
+					}
+					else {
+						cmd = CMD_STRING;
+						core_42ToFree42_string (buf, (*pt) + 1, buf[*pt] & 0x0f, &arg);
+					}
+				}
+				break;
+			case 0xf7 :
+				// SIZE nnnn
+				if (buf[*pt] == 0xf3) {
+					cmd = CMD_SIZE;
+                    arg.type = ARGTYPE_NUM;
+                    arg.val.num = (uint4)((buf[(*pt)+2] << 8) + buf[(*pt)+3]);
+				}
+				else {
+					cmd = CMD_STRING;
+					core_42ToFree42_string (buf, (*pt) + 1, buf[*pt] & 0x0f, &arg);
+				}
+				break;
+		}
+	}
+	else {
+		cmd = CMD_STRING;
+		arg.type = ARGTYPE_STR;
+		core_42ToFree42_string (buf, (*pt) + 1, buf[*pt] & 0x0f, &arg);
+	}
+	(*pt) += (buf[(*pt)] & 0x0f) + 1;
+	store_command_after(&pc, cmd, &arg);
+}
+
+/* Decode first row
+ *
+ * Null & Short Labels
+ */
+void core_42ToFree42_shortLbl (unsigned char *buf, int *pt) {
+	int cmd;
+	arg_struct arg;
+	if (buf[*pt] == 0) {
+		cmd = CMD_NONE;
+		arg.type = ARGTYPE_NONE;
+	}
+	else {
+		cmd = CMD_LBL;
+		arg.type = ARGTYPE_NUM;
+		arg.val.num = buf[*pt] - 1;
+	}
+	(*pt)++;
+	if (cmd != CMD_NONE) {
+		store_command_after(&pc, cmd, &arg);
+	}
+}
+
+/* Decode second row
+ *
+ * Digits, Gto, Xeq & W
+ */
+void core_42ToFree42_row1 (unsigned char *buf, int *pt, int l) {
+	if (buf[*pt] >= 0x1d) {
+		// alpha gto / xeq / w
+		core_42ToFree42_alphaGto(buf, pt);
+	}
+	else {
+		// 0..9, +/-, ., E 
+		core_42ToFree42_number(buf, pt, l);
+	}
+}
+
+/* Decode third & fourth rows
+ *
+ * short sto & rcl
+ */
+void core_42ToFree42_shortStoRcl (unsigned char *buf, int *pt) {
+	int cmd;
+	arg_struct arg;
+	cmd = (buf[*pt] & 0x10) ? CMD_STO : CMD_RCL;
+	arg.type = ARGTYPE_NUM;
+	arg.val.num = buf[*pt] & 0x0f;
+	(*pt)++;
+	store_command_after(&pc, cmd, &arg);
+}
+
+/* Decode one byte instructions
+ *
+ * row 4 to 8
+ * search in cmd array
+ */
+void core_42ToFree42_1Byte (unsigned char *buf, int *pt) {
+	int cmd, i;
+	arg_struct arg;
+	uint4 inst;
+	cmd = CMD_NONE;
+	arg.type = ARGTYPE_NONE;
+	i = 0;
+	inst = (uint4)buf[*pt];
+	do {
+		if ((inst == (cmdlist(i)->hp42s_code & 0x0000ffff)) && ((cmdlist(i)->flags & FLAG_HIDDEN) == 0)) {
+			cmd = i;
+			store_command_after(&pc, cmd, &arg);
+			break;
+		}
+		i++;
+	} while (i < CMD_SENTINEL);
+	(*pt)++;
+}
+
+/* Decode two byte instructions
+ *
+ * row 9 to a
+ * search in cmd array
+ */
+void core_42ToFree42_2Byte (unsigned char *buf, int *pt) {
+	int cmd, i;
+	arg_struct arg;
+	uint4 inst;
+	cmd = CMD_NONE;
+	arg.type = ARGTYPE_NONE;
+	if (buf[*pt] == 0xaf) {
+		// nothing to do
+	}
+	else if (buf [*pt] == 0xae) {
+		cmd = (buf[(*pt)+1] & 0x80) ? CMD_XEQ : CMD_GTO;
+		// once xeq vs gto decoded, force ind mode
+		core_42ToFree42_suffix(buf[(*pt)+1] | 0x80, &arg);
+	}
+	else if ((buf[*pt] >= 0xa0) && (buf[*pt] <= 0xa7)) {
+		cmd = CMD_XROM;
+		core_42toFree42_xrom(buf, pt, &cmd);
+	}
+	else {
+		i = 0;
+		inst = (uint4)buf[*pt];
+		do {
+			if ((inst == (cmdlist(i)->hp42s_code & 0x0000ffff)) && ((cmdlist(i)->flags & FLAG_HIDDEN) == 0)) {
+				cmd = i;
+				break;
+			}
+			i++;
+		} while (i < CMD_SENTINEL);
+		core_42ToFree42_suffix(buf[(*pt)+1], &arg);
+	}
+	(*pt) += 2;
+	if (cmd != CMD_NONE) {
+		store_command_after(&pc, cmd, &arg);
+	}
+}
+
+/* Decode short GTO
+ *
+ * row b
+ */
+void core_42ToFree42_shortGto (unsigned char *buf, int *pt) {
+	int cmd;
+	arg_struct arg;
+	cmd = CMD_NONE;
+	if (buf[*pt] != 0xb0) {
+		cmd = CMD_GTO;
+		arg.type = ARGTYPE_NUM;
+		arg.val.num = (buf[*pt] & 0x0f) - 1;
+	}
+	(*pt) += 2;
+	if (cmd != CMD_NONE) {
+		store_command_after(&pc, cmd, &arg);
+	}
+}
+
+/* Decode row c
+ *
+ * mainly global labels...
+ */
+void core_42ToFree42_rowc (unsigned char *buf, int *pt) {
+	if (buf[*pt] >= 0xce) {
+		// x <> or lbl, basicaly a 2 byte instruction
+		core_42ToFree42_2Byte(buf, pt);
+	}
+	else {
+		// global label or end...
+		core_42ToFree42_globalEnd(buf, pt);
+	}
+}
+
+/* gto / xeq
+ *
+ * row d & e
+ */
+void core_42ToFree42_gtoXeq (unsigned char *buf, int *pt) {
+	int cmd;
+	arg_struct arg;
+	cmd = ((buf[*pt] >> 4) == 0x0e) ? CMD_XEQ : CMD_GTO;
+	core_42ToFree42_suffix(buf[(*pt)+2] & 0x7f, &arg);
+	(*pt) += 3;
+	store_command_after(&pc, cmd, &arg);
+}
+
+/* test and hp-42s extensions
+ *
+ * row f
+ */
+void core_42ToFree42_string (unsigned char *buf, int *pt) {
+	if (buf[*pt] == 0xf0) {
+		core_42ToFree42_string0(buf, pt);
+	}
+	else if (buf[*pt] == 0xf1) {
+		core_42ToFree42_string1(buf, pt);
+	}
+	else if (buf[(*pt)+1] & 0x80) {
+		core_42ToFree42_42Ext(buf, pt);
+	}
+	else {
+		core_42ToFree42_stringn(buf, pt);
+	}
+}
+
+/* Decode instructions
+ *
+ * adapted from decomp41.c A.R. Duell
+ */
+int core_42ToFree42 (unsigned char *buf, int *pt, int l){
+	int endFlag = 0;
+	switch(buf[*pt]>>4) {
+		case 0x00 :
+			core_42ToFree42_shortLbl(buf, pt);
+			break;
+		case 0x01 :
+			core_42ToFree42_row1(buf, pt, l);
+			break;
+		case 0x02 :
+		case 0x03 :
+			core_42ToFree42_shortStoRcl(buf, pt);
+			break;
+		case 0x04 :
+		case 0x05 :
+		case 0x06 :
+		case 0x07 :
+		case 0x08 :
+			core_42ToFree42_1Byte(buf, pt);
+			break;
+		case 0x09 :
+		case 0x0a :
+			core_42ToFree42_2Byte(buf, pt);
+			break;
+		case 0x0b :
+			core_42ToFree42_shortGto(buf, pt);
+			break;
+		case 0x0c :
+			core_42ToFree42_rowc(buf, pt);
+			break;
+		case 0x0d :
+		case 0x0e :
+			core_42ToFree42_gtoXeq(buf, pt);
+			break;
+		case 0x0f:
+			core_42ToFree42_string(buf, pt);
+			break;
+	}
+	return 0;
 }
 
 void core_copy(char *buf, int buflen) {
@@ -2401,6 +2677,7 @@ int find_builtin(const char *name, int namelen) {
         if (i == CMD_HEADING && !core_settings.enable_ext_heading) i++;
         if (i == CMD_ADATE && !core_settings.enable_ext_time) i += 34;
         if (i == CMD_FPTEST && !core_settings.enable_ext_fptest) i++;
+        if (i == CMD_IFC && !core_settings.enable_ext_hpil) i++;
         if (i == CMD_SENTINEL)
             break;
         if ((cmdlist(i)->flags & FLAG_HIDDEN) != 0)
@@ -2747,6 +3024,7 @@ static void stop_interruptible() {
 }
 
 static int handle_error(int error) {
+	int run = 0;
     if (mode_running) {
         if (error == ERR_RUN)
             error = ERR_NONE;
@@ -2818,6 +3096,7 @@ static int handle_error(int error) {
         return 0;
     } else {
         if (error == ERR_RUN) {
+			run = 1;
             set_running(true);
             error = ERR_NONE;
         }
@@ -2830,6 +3109,6 @@ static int handle_error(int error) {
         }
         if (error != ERR_NONE && error != ERR_STOP)
             display_error(error, 1);
-        return 0;
+        return run;
     }
 }

@@ -286,6 +286,13 @@ int4 core_program_size(int prgm_index);
 int core_export_programs(int count, const int *indexes,
                          int (*progress_report)(const char *));
 
+/* core_42ToFree42
+ *
+ * reworked Free42 encoding to allow opcode by opcode decoding
+ * mostly base on T.Okken work, main change is on using flags for early decoding
+ */
+int core_Free42To42 (int4 *pc, unsigned char *buf, int *pt);
+
 /* core_import_programs()
  *
  * This function is called by the shell after the user has selected a file to
@@ -297,6 +304,13 @@ int core_export_programs(int count, const int *indexes,
  * If the callback returns zero, the import will abort.
  */
 void core_import_programs(int (*progress_report)(const char *));
+
+/* core_42ToFree42
+ *
+ * reworked Free42 decoding to allow opcode by opcode decoding
+ * mix between T.Duell & T.Okken methods
+ */
+int core_42ToFree42 (unsigned char *, int *, int );
 
 /* core_copy()
  *
@@ -332,6 +346,7 @@ typedef struct {
     bool enable_ext_heading;
     bool enable_ext_time;
     bool enable_ext_fptest;
+	bool enable_ext_hpil;
 } core_settings_struct;
 
 extern core_settings_struct core_settings;

@@ -4,9 +4,10 @@ if [ -f libgcc111libbid.a ]; then exit 0; fi
 
 mkdir bin
 export PATH="`/bin/pwd`/bin:$PATH"
-ln -s "/opt/android-ndk/toolchains/arm-linux-androideabi-4.9/prebuilt/darwin-x86_64/bin/arm-linux-androideabi-gcc" bin/gcc
-ln -s "/opt/android-ndk/toolchains/arm-linux-androideabi-4.9/prebuilt/darwin-x86_64/bin/arm-linux-androideabi-ar" bin/ar
-export MAKE="/opt/android-ndk/prebuilt/darwin-x86_64/bin/make"
+#ln -s "/opt/android-ndk/toolchains/arm-linux-androideabi-4.9/prebuilt/darwin-x86_64/bin/arm-linux-androideabi-gcc" bin/gcc
+ln -s "/cygdrive/c/dev_android/android-ndk-r11c/toolchains/arm-linux-androideabi-4.9/prebuilt/windows-x86_64/bin/arm-linux-androideabi-gcc.exe" bin/gcc
+ln -s "/cygdrive/c/dev_android/android-ndk-r11c/toolchains/arm-linux-androideabi-4.9/prebuilt/windows-x86_64/bin/arm-linux-androideabi-ar.exe" bin/ar
+#export MAKE="/opt/android-ndk/prebuilt/windows-x86_64/bin/make"
 
 if [ -f ../../inteldecimal/IntelRDFPMathLib20U1.tar.gz ]
 then
@@ -17,7 +18,8 @@ fi
 cd IntelRDFPMathLib20U1
 patch -p0 <../intel-lib-android-armv7.patch
 cd LIBRARY
-$MAKE CC=gcc CALL_BY_REF=1 GLOBAL_RND=1 GLOBAL_FLAGS=1 UNCHANGED_BINARY_FLAGS=0 _HOST_OS=Linux
+#$MAKE CC=gcc CALL_BY_REF=1 GLOBAL_RND=1 GLOBAL_FLAGS=1 UNCHANGED_BINARY_FLAGS=0 _HOST_OS=Linux
+make CC=gcc CALL_BY_REF=1 GLOBAL_RND=1 GLOBAL_FLAGS=1 UNCHANGED_BINARY_FLAGS=0 _HOST_OS=Linux
 mv libbid.a ../../libgcc111libbid.a
 cd ../..
 

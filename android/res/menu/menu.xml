@@ -8,6 +8,9 @@
     <item android:id="@+id/mi_preferences"
           android:title="Preferences"
           android:icon="@android:drawable/ic_menu_preferences"/>
+    <item android:id="@+id/mi_hpil_preferences"
+          android:title="HP-IL Preferences"
+          android:icon="@android:drawable/ic_menu_preferences"/>
     <item android:id="@+id/mi_flip_calc_printout"
           android:title="Print-Out"
           android:icon="@drawable/printer"/>
@@ -20,4 +23,5 @@
           android:title="Import Programs"/>
     <item android:id="@+id/mi_export"
           android:title="Export Programs"/>
+    
 </menu>

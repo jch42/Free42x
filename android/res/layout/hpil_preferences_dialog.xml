@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    android:orientation="vertical"
+    tools:context=".HpilPreferencesDialog" >
+
+    <LinearLayout
+        android:id="@+id/hpilButtonBox"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentRight="true"
+        android:layout_gravity="center"
+        android:orientation="horizontal" >
+
+        <Button
+            android:id="@+id/hpilCancelB"
+            android:layout_width="0px"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Cancel" />
+
+        <Button
+            android:id="@+id/hpilOkB"
+            android:layout_width="0px"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="OK" />
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+		android:layout_alignParentLeft="true"
+		android:layout_alignParentRight="true"
+		android:layout_alignParentTop="true"
+		android:layout_above="@+id/hpilButtonBox" >
+
+        <RelativeLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" >
+
+            <TextView
+                android:id="@+id/hpilInterfaceBoxTV"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="HP-IL Interface :" />
+
+            <RadioGroup
+                android:id="@+id/hpilInterfaceRG"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_below="@+id/hpilInterfaceBoxTV"
+                android:orientation="horizontal"
+                android:text="HP-IL Interface" >
+
+                <RadioButton
+                    android:id="@+id/hpilOffRB"
+	                android:layout_width="fill_parent"
+    	            android:layout_height="70dip"
+                    android:layout_weight="1"
+                    android:button="@null"
+					android:background="@android:color/transparent"
+                    android:drawableTop="@android:drawable/btn_radio"
+                    android:gravity="center_horizontal"
+                    android:text="Off "
+                    android:textSize="12sp" />
+
+                <RadioButton
+                    android:id="@+id/hpilModeIPRB"
+        	        android:layout_width="fill_parent"
+            	    android:layout_height="70dip"
+                    android:layout_weight="1"
+                    android:button="@null"
+                    android:background="@android:color/transparent"
+                    android:drawableTop="@android:drawable/btn_radio"
+                    android:gravity="center_horizontal"
+                    android:text="IP "
+                    android:textSize="12sp" />
+
+                <RadioButton
+                    android:id="@+id/hpilModePilBoxRB"
+                	android:layout_width="fill_parent"
+              		android:layout_height="70dip"
+                    android:layout_weight="1"
+                    android:button="@null"
+                    android:background="@android:color/transparent"
+                    android:drawableTop="@android:drawable/btn_radio"
+                    android:gravity="center_horizontal"
+                    android:text="PILBOX"
+                    android:textSize="12sp" />
+
+                <RadioButton
+                    android:id="@+id/hpilModeBluetoothRB"
+                	android:layout_width="fill_parent"
+                	android:layout_height="70dip"
+                    android:layout_weight="1"
+                    android:button="@null"
+                    android:background="@android:color/transparent"
+                    android:drawableTop="@android:drawable/btn_radio"
+                    android:gravity="center_horizontal"
+                    android:text="Serial"
+                    android:textSize="12sp" />
+                    
+            </RadioGroup>
+
+            <Spinner
+                android:id="@+id/hpilBTPairingSP"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentRight="true"
+                android:layout_below="@+id/hpilInterfaceRG"
+                android:ems="8" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@+id/hpilBTPairingSP"
+                android:text="Bt pair:" />
+            
+            <EditText
+                android:id="@+id/hpilAddrET"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentRight="true"
+                android:layout_below="@+id/hpilBTPairingSP"
+                android:ems="8"
+                android:inputType="phone"
+                android:digits="0123456789." >
+
+                <requestFocus />
+            </EditText>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@+id/hpilAddrET"
+                android:text="Next dev/ IP:" />
+
+            <EditText
+                android:id="@+id/hpilOutPortET"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentRight="true"
+                android:layout_below="@+id/hpilAddrET"
+                android:ems="8"
+                android:inputType="number"
+                android:digits="0123456789" >
+
+                <requestFocus />
+            </EditText>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@+id/hpilOutPortET"
+                android:text="Next dev. port:" />
+
+            <EditText
+                android:id="@+id/hpilInPortET"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentRight="true"
+                android:layout_below="@+id/hpilOutPortET"
+                android:ems="8"
+                android:inputType="number"
+                android:digits="0123456789" >
+
+                <requestFocus />
+            </EditText>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@+id/hpilInPortET"
+                android:text="Listen port:" />
+            
+            <Spinner
+                android:id="@+id/hpilLatencySP"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentRight="true"
+                android:layout_below="@+id/hpilInPortET"
+                android:ems="8" />
+
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignBaseline="@+id/hpilLatencySP"
+                android:text="Loop latency:" />
+            
+            <!-- </LinearLayout> -->
+        </RelativeLayout>
+    </ScrollView>
+
+</RelativeLayout>

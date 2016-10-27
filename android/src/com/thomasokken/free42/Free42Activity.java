@@ -23,19 +23,28 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.BufferedInputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.IntBuffer;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.Date;
+import java.util.Set;
+import java.util.UUID;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -90,7 +99,7 @@ public class Free42Activity extends Activity {
 
     private static final String[] builtinSkinNames = new String[] { "Standard", "Landscape" };
     
-    private static final int SHELL_VERSION = 9;
+    private static final int SHELL_VERSION = 10;
     
     private static final int PRINT_BACKGROUND_COLOR = Color.LTGRAY;
     
@@ -106,6 +115,7 @@ public class Free42Activity extends Activity {
     private ScrollView printScrollView;
     private boolean printViewShowing;
     private PreferencesDialog preferencesDialog;
+    private HpilPreferencesDialog hpilPreferencesDialog;
     private Handler mainHandler;
     
     private SoundPool soundPool;
@@ -130,6 +140,7 @@ public class Free42Activity extends Activity {
     private BroadcastReceiver lowBatteryReceiver;
 
     // Persistent state
+    private String stateFile;
     private int orientation = 0; // 0=portrait, 1=landscape
     private String[] skinName = new String[] { builtinSkinNames[0], builtinSkinNames[0] };
     private String[] externalSkinName = new String[2];
@@ -141,10 +152,37 @@ public class Free42Activity extends Activity {
     private int preferredOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
     private int style = 0;
     
+    // HPIL Persistent state
+    private String BtPair;
+	private String outIP;
+	private String latency;
+	private int inTcpPort;
+	private int outTcpPort;
+	private boolean modeIP;
+	private boolean modeSerial;
+	private boolean modePilBox;
+
+	// HPIL Power management
+	private boolean timeout4_active;
+	
+	// HPIL I/O
+	private BluetoothDevice BtDevice;
+	private BluetoothSocket BtSocket;
+	private boolean modeHpilEnabled;
+	private ServerSocket serverSocket;
+	private Socket connectServerSocket;
+	private BufferedInputStream readFrameStream;
+	private Socket connectClientSocket;
+	private OutputStream writeFrameStream;
+	private int txFrameCount;
+	private int timeStretch;
+	private int lastFrame;
+
     private final Runnable repeaterCaller = new Runnable() { public void run() { repeater(); } };
     private final Runnable timeout1Caller = new Runnable() { public void run() { timeout1(); } };
     private final Runnable timeout2Caller = new Runnable() { public void run() { timeout2(); } };
     private final Runnable timeout3Caller = new Runnable() { public void run() { timeout3(); } };
+    private final Runnable timeout4Caller = new Runnable() { public void run() { timeout4(); } };
     
     ///////////////////////////////////////////////////////
     ///// Top-level code to interface with Android UI /////
@@ -157,11 +195,20 @@ public class Free42Activity extends Activity {
         
         int init_mode;
         IntHolder version = new IntHolder();
+        stateFile = "statex";
         try {
-            stateFileInputStream = openFileInput("state");
+            stateFileInputStream = openFileInput(stateFile);
         } catch (FileNotFoundException e) {
-            stateFileInputStream = null;
+        	try {
+                stateFile = "state";
+                stateFileInputStream = openFileInput(stateFile);    		
+        	} catch (FileNotFoundException f) {
+        		stateFileInputStream = null;
+        	}
         }
+    	// file opened, set filename for write time
+        stateFile = "statex";
+
         if (stateFileInputStream != null) {
             if (read_shell_state(version))
                 init_mode = 1;
@@ -260,13 +307,18 @@ public class Free42Activity extends Activity {
         soundIds = new int[soundResourceIds.length];
         for (int i = 0; i < soundResourceIds.length; i++)
             soundIds[i] = soundPool.load(this, soundResourceIds[i], 1);
+        // power management, keep device on during i/o's
     }
     
     @Override
     protected void onResume() {
         super.onResume();
+        // hp-il port initialization
+        shell_init_port();
+        timeout4_active = false;
         if (core_powercycle())
             start_core_keydown();
+        shell_log("Free42 - OnResume");
     }
     
     @Override
@@ -279,13 +331,20 @@ public class Free42Activity extends Activity {
             } catch (Exception e) {}
         }
     }
-
+    
     @Override
     protected void onPause() {
         end_core_keydown();
+        // terminate hpil operations
+        hpil_close(modeHpilEnabled, modeIP, modePilBox);
+        shell_close_port();
+        if (timeout4_active) {
+        	cancelTimeout4();
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
         // Write state file
         try {
-            stateFileOutputStream = openFileOutput("state", Context.MODE_PRIVATE);
+            stateFileOutputStream = openFileOutput(stateFile, Context.MODE_PRIVATE);
         } catch (FileNotFoundException e) {
             stateFileOutputStream = null;
         }
@@ -315,6 +374,7 @@ public class Free42Activity extends Activity {
             } catch (IOException e) {}
             printGifFile = null;
         }
+        shell_log("Free42 - OnPause");
         super.onPause();
     }
     
@@ -353,7 +413,7 @@ public class Free42Activity extends Activity {
         
         return true;
     }
-    
+
     @Override
     public void onConfigurationChanged(Configuration newConf) {
         super.onConfigurationChanged(newConf);
@@ -392,6 +452,11 @@ public class Free42Activity extends Activity {
         timeout3_active = false;
     }
     
+    private void cancelTimeout4() {
+        mainHandler.removeCallbacks(timeout4Caller);
+        timeout4_active = false;
+    }
+    
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
@@ -403,6 +468,9 @@ public class Free42Activity extends Activity {
             return true;
         case R.id.mi_preferences:
             doPreferences();
+            return true;
+        case R.id.mi_hpil_preferences:
+            doHpilPreferences();
             return true;
         case R.id.mi_flip_calc_printout:
             doFlipCalcPrintout();
@@ -645,6 +713,35 @@ public class Free42Activity extends Activity {
         preferencesDialog.show();
     }
         
+    private void doHpilPreferences() {
+        if (hpilPreferencesDialog == null) {
+            hpilPreferencesDialog = new HpilPreferencesDialog(this);
+            hpilPreferencesDialog.setOkListener(new HpilPreferencesDialog.OkListener() {
+                public void okPressed() {
+                    doHpilPreferencesOk();
+                }
+            });
+        }
+        if (modeIP) {
+        	hpilPreferencesDialog.setModeIP();
+        }
+        else if (modeSerial){
+        	hpilPreferencesDialog.setModeBluetooth();
+        }
+        else if (modePilBox) {
+        	hpilPreferencesDialog.setModePilBox();
+        }
+        else {
+        	hpilPreferencesDialog.setModeOff();
+        }
+        hpilPreferencesDialog.setBtPairing(BtPair);
+        hpilPreferencesDialog.setIPAddr(outIP);
+        hpilPreferencesDialog.setOutPort(outTcpPort);
+        hpilPreferencesDialog.setInPort(inTcpPort);
+        hpilPreferencesDialog.setLatency(latency);
+        hpilPreferencesDialog.show();
+    }
+    
     private void doPreferencesOk() {
         CoreSettings cs = new CoreSettings();
         getCoreSettings(cs);
@@ -700,6 +797,19 @@ public class Free42Activity extends Activity {
             setRequestedOrientation(preferredOrientation);
     }
     
+    private void doHpilPreferencesOk(){
+    	BtPair = hpilPreferencesDialog.getBtPairing();
+		outIP = hpilPreferencesDialog.getIPAddr();
+    	outTcpPort = hpilPreferencesDialog.getOutPort();
+    	inTcpPort = hpilPreferencesDialog.getInPort();
+    	latency = hpilPreferencesDialog.getLatency();
+    	modeIP = hpilPreferencesDialog.getModeIP();
+    	modeSerial = hpilPreferencesDialog.getModeBluetooth();
+    	modePilBox = hpilPreferencesDialog.getModePilBox();
+    	shell_close_port();
+    	shell_init_port();
+    }
+    
     private void doAbout() {
         new AboutDialog(this).show();
     }
@@ -729,7 +839,7 @@ public class Free42Activity extends Activity {
                 try {
                     version = " " + getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
                 } catch (NameNotFoundException e) {}
-                label1.setText("Free42" + version);
+                label1.setText("Free42x" + version);
                 LayoutParams lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
                 lp.addRule(RelativeLayout.ALIGN_TOP, icon.getId());
                 lp.addRule(RelativeLayout.RIGHT_OF, icon.getId());
@@ -1141,7 +1251,18 @@ public class Free42Activity extends Activity {
                 int maxStyle = PreferencesDialog.immersiveModeSupported ? 2 : 1;
                 if (style > maxStyle)
                     style = maxStyle;
-            } else
+            }
+            if (shell_version >= 10) {
+            	modeIP = state_read_boolean();
+            	modeSerial = state_read_boolean();
+            	modePilBox = state_read_boolean();
+            	BtPair = state_read_string();
+            	latency = state_read_string();
+            	outIP = state_read_string();
+            	outTcpPort = state_read_int();
+            	inTcpPort = state_read_int();
+            }
+            else
                 style = 0;
             init_shell_state(shell_version);
         } catch (IllegalArgumentException e) {
@@ -1190,7 +1311,18 @@ public class Free42Activity extends Activity {
             style = 0;
             // fall through
         case 9:
-            // current version (SHELL_VERSION = 9),
+        	// HP-IL extensions
+        	modeIP = false;
+        	modeSerial = false;
+        	modePilBox = false;
+        	BtPair = "";
+        	latency = "1";
+        	outIP = "127.0.0.1";
+        	outTcpPort = 60000;
+        	inTcpPort = 60001;
+        	// fall through
+        case 10:	
+            // current version (SHELL_VERSION = 10),
             // so nothing to do here since everything
             // was initialized from the state file.
             ;
@@ -1219,6 +1351,14 @@ public class Free42Activity extends Activity {
             state_write_boolean(displaySmoothing[1]);
             state_write_boolean(keyVibrationEnabled);
             state_write_int(style);
+            state_write_boolean(modeIP);
+            state_write_boolean(modeSerial);
+            state_write_boolean(modePilBox);
+            state_write_string(BtPair);
+            state_write_string(latency);
+            state_write_string(outIP);
+            state_write_int(outTcpPort);
+            state_write_int(inTcpPort);
         } catch (IllegalArgumentException e) {}
     }
     
@@ -1337,6 +1477,21 @@ public class Free42Activity extends Activity {
             start_core_keydown();
     }
     
+    private void timeout4() {
+        cancelTimeout4();
+        try {
+        	runOnUiThread(new Runnable() {
+        		@Override
+        		public void run() {
+        			getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        		}
+        	});
+        }
+        catch (Exception e) {
+        	timeout4_active = false;
+        }
+    }
+    
     private void click() {
         if (keyClicksEnabled)
             playSound(11, 0);
@@ -1392,6 +1547,8 @@ public class Free42Activity extends Activity {
     private native void core_paste(String s);
     private native void getCoreSettings(CoreSettings settings);
     private native void putCoreSettings(CoreSettings settings);
+    private native void hpil_init (boolean modeHpilEnabled, boolean modeIP, boolean modePilBox);
+    private native void hpil_close (boolean modeHpilEnabled, boolean modeIP, boolean modePilBox);
     private native void redisplay();
 
     private static class CoreSettings {
@@ -1492,6 +1649,29 @@ public class Free42Activity extends Activity {
         timeout3_active = true;
     }
     
+    /**
+     * Ask the shell to keep screen on for 'delay' milliseconds
+     * to let running worker alive.
+     * This function supports the delay for hpil commands.
+     */
+    public void shell_request_timeout4(int delay) {
+    	try {
+    		cancelTimeout4();
+    		mainHandler.postDelayed(timeout4Caller, delay);
+    		timeout4_active = true;
+    		runOnUiThread(new Runnable() {
+    			@Override
+    			public void run() {
+    				getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    			}
+    		});
+    	}
+		catch (Exception e) {
+			timeout4_active = false;
+		}
+    	
+    }
+
     /**
      * shell_read_saved_state()
      *
@@ -1761,7 +1941,7 @@ public class Free42Activity extends Activity {
             return -1;
         }
     }
-    
+
     private boolean accel_inited, accel_exists;
     private double accel_x, accel_y, accel_z;
     
@@ -1911,5 +2091,324 @@ public class Free42Activity extends Activity {
     
     public void shell_log(String s) {
         System.err.print(s);
+    }
+    
+    private int shell_init_port() {
+    	String h = "";
+    	modeHpilEnabled = false;
+    	shell_close_port();
+    	timeStretch = Integer.parseInt(latency);
+    	if (modeIP) {
+    		try {
+    			h = "HPIL / IP\n";
+    			connectClientSocket = new Socket();
+    			h += "Client Socket         - Ok\n";
+    			connectClientSocket.bind(null);
+    			h += "Client Socket Bind    - Ok\n";
+    			connectClientSocket.setSoTimeout(250);
+    			connectClientSocket.setTcpNoDelay(true);
+    			connectClientSocket.connect(new InetSocketAddress(outIP,outTcpPort),500);
+    			h += "Client Socket Connect - Ok\n";
+    			connectClientSocket.setSoLinger(true, 0);
+    			writeFrameStream = connectClientSocket.getOutputStream();
+    			h += "Input Stream          - Ok\n";
+    			serverSocket = new ServerSocket(inTcpPort);
+    			h += "Server Socket         - Ok\n";
+    			serverSocket.setSoTimeout(2);
+    			// no ingoing connection there...
+    			//connectServerSocket = serverSocket.accept();
+				//readFrameStream = new BufferedInputStream(connectServerSocket.getInputStream());
+				modeHpilEnabled = true;
+    		}
+    		catch (IOException e) {
+    	    	shell_close_port();
+    			modeHpilEnabled = false;
+    			h += "Exception ";
+    			h += e;
+    			h += "\n";
+    		}
+    		if (!modeHpilEnabled) {
+    			alert("HPIL / IP disabled !\n" + h);
+    		}
+    	}
+    	else if (modePilBox | modeSerial) {
+    		try {
+    			h = "HPIL / Bluetooth\n";
+    			Set<BluetoothDevice> setPairedDevices = BluetoothAdapter.getDefaultAdapter().getBondedDevices();
+    			BluetoothDevice[] pairedDevices = (BluetoothDevice[]) setPairedDevices.toArray(new BluetoothDevice[setPairedDevices.size()]);
+    			h = "Bluetooth get devices           - Ok\n";
+    			for (int i = 0; i < pairedDevices.length; i++) {
+        			h = "Bluetooth device : " + pairedDevices[i].getName() + "\n";
+    				if (pairedDevices[i].getName().equals(BtPair)) {
+    					BtDevice = pairedDevices[i];
+    					// UUID is 'well known SPP'
+    					BtSocket = BtDevice.createRfcommSocketToServiceRecord(UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"));
+    	    			h = "Bluetooth socket        - Ok\n";
+    					readFrameStream = new BufferedInputStream (BtSocket.getInputStream());
+    	    			h = "Bluetooth input stream  - Ok\n";
+    					writeFrameStream = BtSocket.getOutputStream();
+    	    			h = "Bluetooth output stream - Ok\n";
+    	    			BtSocket.connect();
+    	    			h = "Bluetooth connect       - Ok\n";
+    					modeHpilEnabled = true;
+    					break;
+    				}
+    			}
+    		}
+    		catch (IOException e) {
+    			modeHpilEnabled = false;
+    			h += "Exception ";
+    			h += e;
+    			h += "\n";
+    		}
+    		if (!modeHpilEnabled) {
+    			alert("HPIL / Bluetooth disabled !\n" + h);
+    		}
+    	}
+    	hpil_init(modeHpilEnabled, modeIP, modePilBox);
+    	return modeHpilEnabled ? 1 : 0;
+    }
+
+    /*
+     * shell_check_connectivity
+     * 
+     * Callback for hpil_common(),
+     * Returns 1 if connectivity (IP or BT) seems Ok
+     */
+    public int shell_check_connectivity() {
+    	int ret = 1;					// presume connectivity Ok.
+    	int needReconnection = 0;
+		txFrameCount = 0;
+		if (writeFrameStream == null || readFrameStream == null) {
+			needReconnection++;
+		}
+		else if (modeIP) {
+			try {
+				if (connectClientSocket != null) {
+					if (!connectClientSocket.isConnected()) {
+						needReconnection++;
+					}
+				}
+				else {
+					needReconnection++;
+				}
+				if (serverSocket != null) {
+					if (serverSocket.isClosed()) {
+						needReconnection++;
+					}
+					else if (!serverSocket.isBound()) {
+						needReconnection++;
+					}
+				}
+				else {
+					needReconnection++;
+				}
+			}
+	    	catch (Exception e) {
+	    		needReconnection++;
+	    	}
+	    }
+		else if (modeSerial || modePilBox) {
+			try {
+				if (BtSocket == null) {
+					needReconnection++;
+				}
+			}
+			catch (Exception e) {
+				needReconnection++;
+			}
+		}
+		else {
+			// should not occur
+			needReconnection++;
+		}
+		if (needReconnection != 0) {
+			shell_close_port();
+			ret = shell_init_port();
+		}
+    	return ret;
+    }
+    
+    /*
+     * shell_write_frame()
+     *
+     * Callback for hpil_worker().
+     * Returns 1 if a frame was send, 0 else.
+     */
+    public int shell_write_frame(byte[] buf) {
+    	int ret = 0;
+		if (writeFrameStream != null) {
+			if (modeSerial || modePilBox) {
+				int bufLen = 0;
+				int tx = (buf[0]<<8) + (buf[1] & 0x00ff);
+				if ((tx & 0x0780) != lastFrame) {
+					lastFrame = tx & 0x0780;
+					buf[bufLen++] = (byte) ((tx >> 6) | 0x0020);
+				}
+				buf[bufLen++] = (byte) ((tx & 0x007f) | 0x0080);
+			}
+			try { 
+				writeFrameStream.write(buf);
+				//writeFrameStream.flush();
+				ret = 1;
+			}
+			catch (Exception e) {
+				ret = 0;
+				shell_close_port();
+			}
+		}
+		if (ret != 0) {
+			if (txFrameCount-- == 0) {
+				// keep on for 36 x 3000 ms max				}
+				shell_request_timeout4(108000);
+				txFrameCount = 36 / timeStretch;
+			}
+		}
+    	return ret;
+    }
+
+    /*
+     * shell_read_frame()
+     *
+     * Callback for hpil_worker().
+     * Returns 1 if a frame was received, 0 if no frame received
+     */
+    public int shell_read_frame(byte[] buf) {
+    	int ret = 0;
+    	try {
+    		if (modeIP) {
+    			if (connectServerSocket == null) {
+        			//shell_log("receiving IP frame connect\n");
+        			connectServerSocket = serverSocket.accept();
+        			connectServerSocket.setSoLinger(true, 0);
+    			}
+    	   		if (readFrameStream == null) {
+        			//shell_log("receiving frame getInputStream\n");
+       				readFrameStream = new BufferedInputStream(connectServerSocket.getInputStream());
+       			}
+           		ret = readFrameStream.available();
+        		if (ret == 2) {
+        			// frame received
+        			readFrameStream.read(buf, 0, 2);
+        			}
+        		else if (ret > 2) {
+        			// something went wrong, throw received data away
+        			//shell_log("receiving frame skip data\n");
+        			readFrameStream.skip(ret);
+        		}
+        		else {
+        			// no timeout for BufferedInputStream.read...
+        			Thread.sleep(2 * timeStretch);
+        		}
+       		}
+    		if (modeSerial || modePilBox) {
+    			if (readFrameStream != null) {
+    				//shell_log("receiving frame getInputStream\n");
+    				int len = readFrameStream.available();
+    				int rx;
+    				byte[] rxBuf = new byte[3];
+    				int i;
+    				if (len == 0) {
+    					// no timeout for BufferedInputStream.read...
+    					Thread.sleep(2 * timeStretch);
+    				}
+    				else if (len <= 3) {
+    					readFrameStream.read(rxBuf, 0, len);
+    					for (i = 0; i < len; i++) {
+    						if (rxBuf[i] == 0x0d) {
+    							// skip
+    							//shell_log("receiving frame skip 0x0d\n");
+    						}
+    						else if ((rxBuf[i] & 0x00e1) == 0x0020) {
+    							// msb frame ?
+    							//shell_log("receiving frame msb\n");
+    							lastFrame = (int) (rxBuf[i] & 0x001e) << 6;
+    						}
+    						else if ((rxBuf[i] & 0x0080) == 0x00080){
+    							// lsb frame ?
+    							//shell_log("receiving frame lsb\n");
+    							rx = lastFrame | (int)(rxBuf[i] & 0x007f);
+    							buf[0] = (byte) (rx >> 8);
+    							buf[1] = (byte) (rx & 0x00ff);
+    							ret = 2;
+    						}
+    						else {
+    							// should not occur
+    							//shell_log("receiving frame error\n");
+    							ret = 0;
+    						}
+    					}
+    				}
+    				else  {
+    					// something went wrong, throw received data away
+    					//shell_log("receiving frame skip data\n");
+    					readFrameStream.skip(ret);
+    					ret = 0;
+    				}
+    			}
+    		}
+    	}
+    	catch (Exception e) {
+			//shell_log("receiving frame Exception\n");
+    		ret = 0;
+    	}
+    	return ret;
+    }
+    
+    private void shell_close_port() {
+    	if (readFrameStream != null) {
+    		try {
+    			readFrameStream.close();
+    			readFrameStream = null;
+    		}
+    		catch (Exception e) {
+    			readFrameStream = null;
+    		}
+    	}
+    	if (connectServerSocket != null) {
+    		try {
+    			connectServerSocket.close();
+    			connectServerSocket = null;
+    		}
+    		catch (Exception e) {
+    			connectServerSocket = null;
+    		}
+    	}
+    	if (serverSocket != null) {
+    		try {
+    			serverSocket.close();
+    			serverSocket = null;
+    		}
+    		catch (Exception e) {
+    			serverSocket = null;
+    		}
+    	} 
+    	if (writeFrameStream != null) {
+    		try {
+    			writeFrameStream.close();
+    			writeFrameStream = null;
+    		}
+    		catch (Exception e) {
+       			writeFrameStream = null;
+    		}
+    	}
+    	if (connectClientSocket != null) {
+    		try {
+    			connectClientSocket.close();
+    			connectClientSocket = null;
+    		}
+    		catch (Exception e) {
+       			connectClientSocket = null;
+    		}
+    	}
+    	if (BtSocket != null) {
+    		try {
+    			BtSocket.close();
+    			BtSocket = null;
+    		}
+    		catch (Exception e) {
+    			BtSocket = null;
+    		}
+    	}
     }
 }

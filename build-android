@@ -8,10 +8,10 @@ mkdir -p packages
 
 # Build Android version
 
-mkdir android-tmp
-cd android-tmp
-svn checkout svn://mactv/free42/trunk free42
-cd free42/android
+#mkdir android-tmp
+#cd android-tmp
+#svn checkout svn://mactv/free42/trunk free42
+cd android
 VERSION_CODE=`cat version.code`
 # VERSION_CODE=`expr $VERSION_CODE + 1`
 # echo $VERSION_CODE > version.code
@@ -24,10 +24,10 @@ mv TMP AndroidManifest.xml
 cd jni
 sh ./copy-files-release.sh
 sh ./build-intel-lib.sh
-/opt/android-ndk/ndk-build
-cd ..
-echo "======== ATTENTION: Possible Password Prompt ========"
-ant release
-mv bin/Free42Android-release.apk ../../../packages/Free42Android.apk
-cd ../../..
-rm -rf android-tmp
+#/opt/android-ndk/ndk-build
+#cd ..
+#echo "======== ATTENTION: Possible Password Prompt ========"
+#ant release
+#mv bin/Free42Android-release.apk ../../../packages/Free42Android.apk
+#cd ../../..
+#rm -rf android-tmp

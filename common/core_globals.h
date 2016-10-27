@@ -61,6 +61,24 @@
 #define ERR_INTERRUPTIBLE          30
 #define ERR_NO_VARIABLES           31
 #define ERR_SUSPICIOUS_OFF         32
+// hp-il special errors
+#define ERR_BROKEN_LOOP			   33
+#define ERR_BROKEN_IP			   34
+#define ERR_NO_RESPONSE			   35
+#define ERR_IL_ERROR			   36
+#define ERR_NO_DRIVE			   37
+#define ERR_BAD_MEDIA			   38
+#define ERR_DIR_FULL			   39
+#define ERR_MEDIA_FULL			   40
+#define ERR_FILE_DUP			   41
+#define ERR_FILE_NOT_FOUND		   42
+#define ERR_FILE_SECURED		   43
+#define ERR_FILE_EOF			   44
+#define ERR_FILE_BAD_TYPE		   45
+#define ERR_TRANSMIT_ERROR		   46
+#define ERR_BAD_CRC				   47
+#define ERR_NO_PRINTER			   48
+#define ERR_PRINTER_ERR			   49
 
 typedef struct {
     const char *text;
@@ -293,9 +311,11 @@ typedef union {
         char double_wide_print;
         char lowercase_print;
         char f14;
-        char trace_print; /* 'normal_print' ignored if this is set */
+        char trace_print;	/* 'normal_print' ignored if this is set */
         char normal_print;
-        char f17; char f18; char f19; char f20;
+        char hpil_ina_err;	/* ina, end condition not found, fill up alpha buf */
+		char hpil_ina_eol;	/* ina, crlf condition Ok */
+		char f19; char f20;
         char printer_enable;
         char numeric_data_input;
         char alpha_data_input;
@@ -306,7 +326,9 @@ typedef union {
         char decimal_point;
         char thousands_separators;
         char stack_lift_disable;
-        char f31; char f32; char f33;
+        char f31;
+		char manual_IO_mode;
+		char f33;
         char agraph_control1; /* 0 (default): dst = dst | src, 1: dst = src, */
         char agraph_control0; /* 2: dst = dst & ~src, 3: dst = dst ^ src */
         char digits_bit3;

@@ -13,6 +13,8 @@ del core_commands6.cpp
 del core_commands6.h
 del core_commands7.cpp
 del core_commands7.h
+del core_commands8.cpp
+del core_commands8.h
 del core_display.cpp
 del core_display.h
 del core_globals.cpp
@@ -39,6 +41,19 @@ del core_tables.cpp
 del core_tables.h
 del core_variables.cpp
 del core_variables.h
+del FastDelegate.h
+del hpil_common.cpp
+del hpil_common.h
+del hpil_controller.cpp
+del hpil_controller.h
+del hpil_core.cpp
+del hpil_core.h
+del hpil_extended.cpp
+del hpil_extended.h
+del hpil_mass.cpp
+del hpil_mass.h
+del hpil_printer.cpp
+del hpil_printer.h
 del shell.h
 del shell_loadimage.cpp
 del shell_loadimage.h
@@ -49,7 +64,3 @@ del skin2cpp.conf
 del keymap2cpp.cpp
 del bid_conf.h
 del bid_functions.h
-rmdir /s /q IntelRDFPMathLib20U1
-del readtest.c
-del readtest_lines.cpp
-del cl111libbid.lib

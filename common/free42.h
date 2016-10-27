@@ -85,7 +85,7 @@ extern "C" double log2(double x);
 #endif
 
 
-#define uint unsigned int
+//#define uint unsigned int
 
 /* Magic number and version number for the state file.
  * State file versions correspond to application releases as follows:
@@ -134,9 +134,10 @@ extern "C" double log2(double x);
  * Version 17: 1.4.65 iPhone "OFF enable" flag
  * Version 18: 1.4.79 Replaced BCD20 with Intel's Decimal Floating Point
  *                    Library v.2.1.
+ * Version 19: 1.9.0  Adding HPIL
  */
 #define FREE42_MAGIC 0x466b3432
-#define FREE42_VERSION 18
+#define FREE42_VERSION 19
 
 
 #endif

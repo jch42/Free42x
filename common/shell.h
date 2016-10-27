@@ -223,6 +223,11 @@ int shell_get_location(double *lat, double *lon, double *lat_lon_acc,
 int shell_get_heading(double *mag_heading, double *true_heading, double *acc,
                                 double *x, double *y, double *z);
 #endif
+/* shell_check_connectivity()
+ *
+ * check loop i/o conectivity
+ */
+int shell_check_connectivity();
 
 /* shell_get_time_date()
  *
@@ -240,5 +245,33 @@ void shell_get_time_date(uint4 *time, uint4 *date, int *weekday);
  * Note: non-debug versions of Free42 should never use this.
  */
 void shell_log(const char *message);
+
+/* shell_read_frame()
+ *
+ * Callback from hpil loop, check if frame received.
+ * Frame is rebuild from serial rx.
+ * Returns 1 when complete frame is received and clears tiemout4
+ */
+int shell_read_frame(int *rx);
+
+/* shell_write_frame()
+ *
+ * Callback from hpil loop, send new frame.
+ * is using com port, Frame is split according to ilser, full 8 bits improved format.
+ * return 1 - IP server unreachable...
+ */
+int shell_write_frame(int tx);
+
+/* shell_write_console()
+ *
+ * Generic output to console
+ */
+void shell_write_console(char *msg);
+
+#ifdef DEBUG
+void logtofile(const char *message);
+void lognumber(int4 num);
+void logdouble(double num);
+#endif
 
 #endif

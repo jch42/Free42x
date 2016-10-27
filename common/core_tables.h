@@ -407,9 +407,48 @@
 #define CMD_RCLALM      365
 #define CMD_SWPT        366
 #define CMD_FPTEST      367
-
-#define CMD_SENTINEL    368
-
+/* hp-il extensions */
+#define CMD_IFC			368
+#define CMD_NLOOP   	369
+#define CMD_SELECT		370
+#define CMD_RCLSEL		371
+#define CMD_PRTSEL		372
+#define CMD_DSKSEL		373
+#define CMD_AUTOIO		374
+#define CMS_MANIO		375
+#define CMD_STAT		376
+#define CMD_ID			377
+#define CMD_AID			378
+/* hp-il mass storage operations */
+#define CMD_CREATE		379
+#define CMD_DIR			380
+#define CMD_NEWM		381
+#define CMD_PURGE	    382
+#define CMD_READP2		383			// alas, readp alredy used for Copan extensions
+#define CMD_READR		384
+#define CMD_RENAME		385
+#define CMD_SEC			386
+#define CMD_UNSEC		387
+#define CMD_WRTP		388
+#define CMD_WRTR		389
+#define CMD_ZERO		390
+/* hp-il extended io */
+#define CMD_ANUMDEL		391
+#define CMD_CLRDEV		392
+#define CMD_CLRLOOP		393
+#define CMD_INAC		394
+#define CMD_INACL		395
+#define CMD_INAE		396
+#define CMD_INAN		397
+#define CMD_INXB		398
+#define CMD_INACCL		399
+#define CMD_OUTAC		400
+#define CMD_OUTACL		401
+#define CMD_OUTAE		402
+#define CMD_OUTAN		403
+#define CMD_OUTXB		404
+/* end of commands */
+#define CMD_SENTINEL    405
 
 /* command_spec.argtype */
 

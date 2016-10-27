@@ -27,6 +27,7 @@ bool unpersist_display(int version);
 void clear_display();
 void flush_display();
 void repaint_display();
+void scroll_display(int row, const char *s, int length);
 void draw_pixel(int x, int y);
 void draw_pattern(phloat dx, phloat dy, const char *pattern, int pattern_width);
 void fly_goose();

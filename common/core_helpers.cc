@@ -24,7 +24,7 @@
 #include "core_main.h"
 #include "core_variables.h"
 #include "shell.h"
-
+#include "hpil_printer.h"
 
 int resolve_ind_arg(arg_struct *arg) {
     vartype *v;
@@ -486,6 +486,8 @@ void print_text(const char *text, int length, int left_justified) {
     }
 
     shell_print(buf, bufptr, bitmap, 18, 0, 0, 143, 9);
+	// patch for processing hpil printing
+	hpil_printText(text, length, left_justified);
 }
 
 void print_lines(const char *text, int length, int left_justified) {
@@ -1161,7 +1163,7 @@ char *phloat2program(phloat d) {
     int alllen;
     int scilen;
     char dot = flags.f.decimal_point ? '.' : ',';
-    int decimal, zeroes, last_nonzero, exponent;
+    int decimal, zeroes = 0, last_nonzero, exponent;
     int i;
     alllen = phloat2string(d, allbuf, 24, 0, 0, 3, 0);
     scilen = phloat2string(d, scibuf, 24, 0, 11, 1, 0);

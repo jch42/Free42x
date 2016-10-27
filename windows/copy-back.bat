@@ -13,6 +13,8 @@ copy core_commands6.cpp ..\common\core_commands6.cc
 copy core_commands6.h ..\common
 copy core_commands7.cpp ..\common\core_commands7.cc
 copy core_commands7.h ..\common
+copy core_commands8.cpp ..\common\core_commands8.cc
+copy core_commands8.h ..\common
 copy core_display.cpp ..\common\core_display.cc
 copy core_display.h ..\common
 copy core_globals.cpp ..\common\core_globals.cc
@@ -39,6 +41,19 @@ copy core_tables.cpp ..\common\core_tables.cc
 copy core_tables.h ..\common
 copy core_variables.cpp ..\common\core_variables.cc
 copy core_variables.h ..\common
+copy FastDelegate.h ..\common
+copy hpil_common.cpp ..\common\hpil_common.cc
+copy hpil_common.h ..\common
+copy hpil_controller.cpp ..\common\hpil_controller.cc
+copy hpil_controller.h ..\common
+copy hpil_core.cpp ..\common\hpil_core.cc
+copy hpil_core.h ..\common
+copy hpil_extended.cpp ..\common\hpil_extended.cc
+copy hpil_extended.h ..\common
+copy hpil_mass.cpp ..\common\hpil_mass.cc
+copy hpil_mass.h ..\common
+copy hpil_printer.cpp ..\common\hpil_printer.cc
+copy hpil_printer.h ..\common
 copy shell.h ..\common
 copy shell_loadimage.cpp ..\common\shell_loadimage.cc
 copy shell_loadimage.h ..\common
@@ -49,3 +64,4 @@ copy skin2cpp.conf ..\common\skin2cc.conf
 copy keymap2cpp.cpp ..\common\keymap2cc.cc
 copy bid_conf.h ..\common
 copy bid_functions.h ..\common
+pause

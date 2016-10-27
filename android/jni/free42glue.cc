@@ -24,6 +24,7 @@
 #include "shell.h"
 #include "core_main.h"
 #include "core_display.h"
+#include "hpil_common.h"
 
 
 #define GLUE_DEBUG 0
@@ -326,6 +327,17 @@ Java_com_thomasokken_free42_Free42Activity_redisplay(JNIEnv *env, jobject thiz) 
     redisplay();
 }
 
+extern "C" void
+Java_com_thomasokken_free42_Free42Activity_hpil_1init(JNIEnv *env, jobject thiz, jboolean modeEnabled, jboolean modeIP, jboolean modePIL_BOX) {
+    Tracer T("hpil_init");
+    hpil_init(modeEnabled, modeIP, modePIL_BOX);
+}
+
+extern "C" void
+Java_com_thomasokken_free42_Free42Activity_hpil_1close(JNIEnv *env, jobject thiz, jboolean modeEnabled, jboolean modeIP, jboolean modePIL_BOX) {
+    Tracer T("hpil_init");
+    hpil_close(modeEnabled, modeIP, modePIL_BOX);
+}
 
 /***************************************************************/
 /* Here followeth the implementation of the shell.h interface. */
@@ -533,6 +545,66 @@ int shell_read(char *buf, int4 bufsize) {
     return n;
 }
 
+// place holder for HPIL connectivity check handler
+int shell_check_connectivity() {
+	int ret = ERR_BROKEN_LOOP;
+	Tracer T("shell_check_connectivity");
+    JNIEnv *env = getJniEnv();
+    jclass klass = env->GetObjectClass(g_activity);
+    jmethodID mid = env->GetMethodID(klass, "shell_check_connectivity", "()I");
+    ret = env->CallIntMethod(g_activity, mid);
+    // Delete local references
+    env->DeleteLocalRef(klass);
+    return ret ? ERR_NONE : ERR_BROKEN_LOOP;
+}
+
+// place holder for HPIL frame transmit handler
+int shell_write_frame(int tx) {
+	int n, ret = 0;
+	char buf[2];
+	Tracer T("shell_write_frame");
+	buf[0] = tx >> 8;
+	buf[1] = tx & 0xff;
+    JNIEnv *env = getJniEnv();
+    jclass klass = env->GetObjectClass(g_activity);
+    jmethodID mid = env->GetMethodID(klass, "shell_write_frame", "([B)I");
+    jbyteArray buf2 = env->NewByteArray(2);
+    env->SetByteArrayRegion(buf2, 0, 2, (const jbyte *) buf);
+    ret = env->CallIntMethod(g_activity, mid, buf2);
+    // Delete local references
+    env->DeleteLocalRef(klass);
+    env->DeleteLocalRef(buf2);
+    //shell_logprintf("sending frame 0x%04x, ret %i\n", tx, ret);
+    return ret;
+}
+
+// place holder for HPIL frame receive handler
+int shell_read_frame(int *rx) {
+	int n, ret = 0;
+	unsigned char buf[2];
+	//Tracer T("shell_read_frame");
+    JNIEnv *env = getJniEnv();
+    jclass klass = env->GetObjectClass(g_activity);
+    jmethodID mid = env->GetMethodID(klass, "shell_read_frame", "([B)I");
+    jbyteArray buf2 = env->NewByteArray(2);
+    n = env->CallIntMethod(g_activity, mid, buf2);
+    if (n == 2) {
+        env->GetByteArrayRegion(buf2, 0, n, (jbyte *) buf);
+        //shell_logprintf("receiving frame [0x%02x, 0x%02x]\n", buf[0], buf[1]);
+        *rx = (buf[0]<<8) + buf[1];
+        ret = 1;
+    }
+    // Delete local references
+    env->DeleteLocalRef(klass);
+    env->DeleteLocalRef(buf2);
+    //shell_logprintf("receiving frame 0x%04x, n %i, ret %i\n", *rx, n, ret);
+    return ret;
+}
+
+// place holder for Console debug
+void shell_write_console(char *) {
+}
+
 int shell_get_acceleration(double *x, double *y, double *z) {
     Tracer T("shell_get_acceleration");
     JNIEnv *env = getJniEnv();
@@ -650,3 +722,4 @@ void shell_logprintf(const char *format, ...) {
 
     va_end(ap);
 }
+

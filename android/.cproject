@@ -20,7 +20,7 @@
 					<folderInfo id="com.android.toolchain.gcc.1736268388.1381702714" name="/" resourcePath="">
 						<toolChain id="com.android.toolchain.gcc.1118932808" name="Android GCC" superClass="com.android.toolchain.gcc">
 							<targetPlatform binaryParser="org.eclipse.cdt.core.ELF" id="com.android.targetPlatform.1266441435" isAbstract="false" superClass="com.android.targetPlatform"/>
-							<builder id="com.android.builder.191008673" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="Android Builder" superClass="com.android.builder">
+							<builder autoBuildTarget="" cleanBuildTarget="clean" command="C:\Dev_Android\android-ndk-r11c\ndk-build.cmd" enableAutoBuild="false" enableCleanBuild="true" enabledIncrementalBuild="true" id="com.android.builder.191008673" incrementalBuildTarget="" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="Android Builder" superClass="com.android.builder">
 								<outputEntries>
 									<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="outputPath" name="obj"/>
 									<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="outputPath" name="libs"/>
@@ -54,4 +54,5 @@
 			<resource resourceType="PROJECT" workspacePath="/Free42Android"/>
 		</configuration>
 	</storageModule>
+	<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
 </cproject>

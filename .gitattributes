@@ -1,5 +1,11 @@
 # Auto detect text files and perform LF normalization
-* -text
+* text=auto
+
+# take care of linux cases
+*.sh text eol=lf
+*.mk test eol=lf
+*.patch -text
+*.vcproj text eol=crlf
 
 # Custom for Visual Studio
 *.cs     diff=csharp
