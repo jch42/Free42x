@@ -89,9 +89,6 @@ int docmd_rclsel(arg_struct *arg) {
 	if (v == NULL)
 	    return ERR_INSUFFICIENT_MEMORY;
 	recall_result(v);
-	if (flags.f.trace_print && flags.f.printer_exists) {
-		docmd_prx(NULL);
-	}
     return ERR_NONE;}
 
 int docmd_prtsel(arg_struct *arg) {

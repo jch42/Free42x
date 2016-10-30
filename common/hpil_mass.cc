@@ -1352,6 +1352,7 @@ static void hpil_wrtpRefreshBuf(void) {
 		done = core_Free42To42(&pc, hpilXCore.buf, &i);
 	} while (i < 0xe6 && !done);
 	hpilXCore.bufSize = i;
+	i--;
 	for (i; i >= 0; i--) {
 		crc += hpilXCore.buf[i];
 	}
@@ -1790,10 +1791,13 @@ static void hpil_readpRefreshBuf(void) {
 	s.index = j;
 	if (hpilXCore.statusFlags & RunAgainListenBuf) {
 		// read next buffer
-		if (s.pBlocks < (s.fLength + 1)) {
+		if (s.fLength < (s.pBlocks + 0x100)) {
 			hpilXCore.statusFlags &= ~RunAgainListenBuf;
-			}
-		hpilXCore.bufSize = (s.pBlocks < (s.fLength + 0x101)) ? s.pBlocks - s.fLength + 1 : 0x100;
+			hpilXCore.bufSize = s.fLength - s.pBlocks + 1;
+		}
+		else {
+			hpilXCore.bufSize = 0x100;
+		}
 	}
 	else {
 		if (crc != buf[0]) {
@@ -1809,8 +1813,6 @@ static void hpil_readpRefreshBuf(void) {
 			flags.f.normal_print = s.normal;
 			hpil_emptyListenBuffer = NULL;
 			if (!mode_running && s.fAttr & 0x02) {
-				// TODO - find a way to go on with new program
-				// keyed entry and autorun set -> xeq start of read program
 				pc = 00;
 				current_prgm = read_prgm;
 			}
@@ -1829,8 +1831,6 @@ static void hpil_readpRefreshBuf(void) {
 	}
 	s.differedError = error;
 }
-
-
 
 /* vHeaderChk
  *
