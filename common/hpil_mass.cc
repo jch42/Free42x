@@ -1781,7 +1781,7 @@ static void hpil_readpRefreshBuf(void) {
 		core_42ToFree42((unsigned char*)buf, &i, 30);
 		for (j; j < i; j++) {
 			// update Crc
-			crc += hpilXCore.buf[j];
+			crc += buf[j];
 		}
 	}
 	// copy end of buffer to beginning
