@@ -727,18 +727,18 @@ static int hpil_inx_completion(int error) {
 				ILCMD_ltn;
 				switch (ioEndMethod) {
 					case MethodNone :
-						hpilXCore.bufSize = (ioTargetRegister == AlphaRegister) ? 44 : 1;
+						hpilXCore.bufSize = (ioTargetRegister == AlphaRegister) ? 43 : 1;
 						break;
 					case MethodChar :
-						hpilXCore.bufSize = 44;
+						hpilXCore.bufSize = 43;
 						hpilXCore.statusFlags |= ListenTilChar;
 						break;
 					case MethodCrLf :
-						hpilXCore.bufSize = 44;
+						hpilXCore.bufSize = 43;
 						hpilXCore.statusFlags |= ListenTilCrLf;
 						break;
 					case MethodEnd :
-						hpilXCore.bufSize = 44;
+						hpilXCore.bufSize = 43;
 						hpilXCore.statusFlags |= ListenTilEnd;
 						break;
 					case MethodLen :
