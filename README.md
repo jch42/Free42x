@@ -33,19 +33,20 @@ HP-IL functions already released:
 
 
 SOME NOTES :
- All versions :
+* All versions :
 	Serial mode is available in two flavours,
 	one using a modified Ilper version, in order to remove PIL-Box presence check and special PIL-Box messages,
 	the other mode takes care of PIL-Box special messages.
- Android :
+* Android :
 	Free42x for Android should be considered as experimental, use it at your own risk!
 	As Free42x is based on Free42 and for the time being not forked, I have used the same reverse domain,
 	and from an Android point of vue, it is nearly the same application as the original Free42. 
 	Installation steps :
 		1) you must enable, at least temporarily, installation from Unknown sources.
-		2) remove Free42 (WARNING - you will lose your programs, data... ), as Android will try (and fail) to upgrade it.
+		2) remove Free42 (WARNING - you will lose your programs, data... ), as Android will try (and fail) to upgrade.
 		3) get the package on your device and install it.
-	Bluetooth mode is very unstable yet. AFAIK, seems linked to the device (Ok on a Samsung ACE GT-S5830 Gingerbread 2.3.3, some issues on Google Nexus 4 Lollipop 5.1.1)
- Windows :
-	Free42x files a suffixed with a 'x' to avoid messing with original Free42 files.
+	Bluetooth mode is very unstable yet. AFAIK, seems linked to the device.
+	Ok on a Samsung ACE GT-S5830 Gingerbread 2.3.3, some issues on Google Nexus 4 Lollipop 5.1.1.
+* Windows :
+	Free42x files are suffixed with a 'x' to avoid messing with original Free42 files.
 	At the very first run, Free42x will try to read the Free42 state.bin file in a attempt to import the configuration.
