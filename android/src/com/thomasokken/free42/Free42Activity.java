@@ -176,7 +176,7 @@ public class Free42Activity extends Activity {
 	private OutputStream writeFrameStream;
 	private int txFrameCount;
 	private int timeStretch;
-	private int lastFrame;
+	private int lastFrame = 0xffff;
 
     private final Runnable repeaterCaller = new Runnable() { public void run() { repeater(); } };
     private final Runnable timeout1Caller = new Runnable() { public void run() { timeout1(); } };
@@ -2243,11 +2243,16 @@ public class Free42Activity extends Activity {
 				int tx = (buf[0]<<8) + (buf[1] & 0x00ff);
 				if ((tx & 0x0780) != lastFrame) {
 					lastFrame = tx & 0x0780;
-					buf[bufLen++] = (byte) ((tx >> 6) | 0x0020);
+					buf[bufLen++] = (byte) (((tx >> 6) & 0x1e) | 0x0020);
+				}
+				else {
+					// 'resize' buf to 1 byte
+					byte[] outBuf = new byte[1];
+					buf = outBuf;
 				}
 				buf[bufLen++] = (byte) ((tx & 0x007f) | 0x0080);
 			}
-			try { 
+			try {
 				writeFrameStream.write(buf);
 				//writeFrameStream.flush();
 				ret = 1;
@@ -2324,7 +2329,7 @@ public class Free42Activity extends Activity {
     							//shell_log("receiving frame msb\n");
     							lastFrame = (int) (rxBuf[i] & 0x001e) << 6;
     						}
-    						else if ((rxBuf[i] & 0x0080) == 0x00080){
+    						else if ((rxBuf[i] & 0x0080) == 0x0080){
     							// lsb frame ?
     							//shell_log("receiving frame lsb\n");
     							rx = lastFrame | (int)(rxBuf[i] & 0x007f);
