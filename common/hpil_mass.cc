@@ -312,7 +312,7 @@ int docmd_create(arg_struct *arg) {
 	s.fAttr = 0x00;
 	s.fAttrMask = 0xff;
 	hpil_settings.disk = hpil_settings.selected;
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_massGenericReadWrite_completion;
 	mode_interruptible = hpil_worker;
@@ -330,7 +330,7 @@ int docmd_dir(arg_struct *arg) {
 	s.fTypeMask = 0x0000;
 	s.fAttr = 0x00;	// do we need to care ?
 	hpil_settings.disk = hpil_settings.selected;
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_massGenericReadWrite_completion;
 	mode_interruptible = hpil_worker;
@@ -356,7 +356,7 @@ int docmd_newm(arg_struct *arg) {
 			s.volume[i] = ' ';
 		}
 	}
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_newm_completion;
 	mode_interruptible = hpil_worker;
@@ -388,7 +388,7 @@ int docmd_purge(arg_struct *arg) {
 	s.fAttr = 0x00;
 	s.fAttrMask = 0xff;
 	hpil_settings.disk = hpil_settings.selected;
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_massGenericReadWrite_completion;
 	mode_interruptible = hpil_worker;
@@ -425,7 +425,7 @@ int docmd_readp2(arg_struct *arg) {
 	s.normal = flags.f.normal_print;
 	flags.f.trace_print = 0;
 	flags.f.normal_print = 0;
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_massGenericReadWrite_completion;
 	mode_interruptible = hpil_worker;
@@ -475,7 +475,7 @@ int docmd_readr(arg_struct *arg) {
 		s.vheader.nameLen = alphaSplit.len2;
 		s.fTypeMask = 0xfff0;
 	}
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_massGenericReadWrite_completion;
 	mode_interruptible = hpil_worker;
@@ -505,7 +505,7 @@ int docmd_rename(arg_struct *arg) {
 	strncpy(s.fName, alphaSplit.str1, 10);
 	strncpy(s.fRename, alphaSplit.str2, 10);
 	hpil_settings.disk = hpil_settings.selected;
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_massGenericReadWrite_completion;
 	mode_interruptible = hpil_worker;
@@ -537,7 +537,7 @@ int docmd_sec(arg_struct *arg) {
 	s.fAttr = FlagSecured;
 	s.fAttrMask = ~FlagSecured;
 	hpil_settings.disk = hpil_settings.selected;
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_massGenericReadWrite_completion;
 	mode_interruptible = hpil_worker;
@@ -569,7 +569,7 @@ int docmd_unsec(arg_struct *arg) {
 	s.fAttr = 0x00;
 	s.fAttrMask = ~FlagSecured;
 	hpil_settings.disk = hpil_settings.selected;
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_massGenericReadWrite_completion;
 	mode_interruptible = hpil_worker;
@@ -646,7 +646,7 @@ int docmd_wrtp(arg_struct *arg) {
 	// take care of the extra crc byte !
 	s.fBlocks = (BLOCK_SZ + s.fLength)  / BLOCK_SZ;
 	// go
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_massGenericReadWrite_completion;
 	mode_interruptible = hpil_worker;
@@ -768,7 +768,7 @@ int docmd_wrtr(arg_struct *arg) {
 		s.fLength = (s.fLength + REGS_SZ - 1) / REGS_SZ;
 		s.fBlocks = ((BLOCK_SZ / REGS_SZ) - 1 + s.fLength)  / (BLOCK_SZ / REGS_SZ);
 		// go
-		ILCMD_IDY;
+		ILCMD_IDY(1);
 		hpil_step = 0;
 		hpil_completion = hpil_massGenericReadWrite_completion;
 		mode_interruptible = hpil_worker;
@@ -802,7 +802,7 @@ int docmd_zero(arg_struct *arg) {
 	s.fAttr = 0x00;
 	s.fAttrMask = 0xff;
 	hpil_settings.disk = hpil_settings.selected;
-	ILCMD_IDY;
+	ILCMD_IDY(1);
 	hpil_step = 0;
 	hpil_completion = hpil_massGenericReadWrite_completion;
 	mode_interruptible = hpil_worker;

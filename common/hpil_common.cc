@@ -86,6 +86,7 @@ void hpil_start(void) {
  *
  */
 void hpil_init(bool modeEnabled, bool modeIP, bool modePIL_Box) {
+	int err;
 	hpil_settings.modeEnabled = modeEnabled;
 	hpil_settings.modeIP = modeIP;
 	hpil_settings.modePIL_Box = modePIL_Box;
@@ -101,14 +102,21 @@ void hpil_init(bool modeEnabled, bool modeIP, bool modePIL_Box) {
 	}
 	if (hpil_settings.modeEnabled) {
 		ILCMD_IFC;
-
 		IFCRunning = 1;
 		IFCCountdown = 15;
 		hpil_settings.modeTransparent = true;
-		while (hpil_worker(ERR_NONE) == ERR_INTERRUPTIBLE);
+		do {
+			err = hpil_worker(ERR_NONE);
+		} 
+		while (err == ERR_INTERRUPTIBLE);
 		hpil_settings.modeTransparent = false;
 	}
-	flags.f.VIRTUAL_input = hpil_settings.modeEnabled;
+	if (err != ERR_NONE) {
+			hpil_settings.modeEnabled = false;
+	}
+	else {
+		flags.f.VIRTUAL_input = hpil_settings.modeEnabled;
+	}
 }
 
 void hpil_close(bool modeEnabled, bool modeIP, bool modePil_Box) {
@@ -237,6 +245,9 @@ int hpil_worker(int interrupted) {
 			}
 		}
 		else if (IFCRunning == 1 && loopTimeout < 2 && (IFCCountdown-- > 0)) {
+			// need to restart core state machine
+			hpil_core.begin(&hpilXCore);
+			hpilXCore.statusFlags = 0;
 			ILCMD_IFC;
 		}
 		else {
@@ -608,7 +619,7 @@ int hpil_splitAlphaReg(int mode) {
 			alphaSplit.str1[alphaSplit.len1] = ' ';
 		}
 	}
-	if (mode & SPLIT_MODE_PRGM && alphaSplit.len2 != 0) {
+	if ((mode & SPLIT_MODE_PRGM) && (alphaSplit.len2 != 0)) {
 		for (alphaSplit.len2; alphaSplit.len2 < 10; alphaSplit.len2++) {
 			alphaSplit.str2[alphaSplit.len2] = ' ';
 		}

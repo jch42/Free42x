@@ -128,9 +128,9 @@ protected:
 #define ILCMD_PPD     controllerCommand = M_PPD    ; hpilXCore.statusFlags |= CmdNew
 #define ILCMD_GET     controllerCommand = M_GET    ; hpilXCore.statusFlags |= CmdNew
 #define ILCMD_ELN     controllerCommand = M_ELN    ; hpilXCore.statusFlags |= CmdNew
-#define ILCMD_PPE(x) controllerCommand = M_PPE | x; hpilXCore.statusFlags |= CmdNew
-#define ILCMD_DDL(x) controllerCommand = M_DDL | x; hpilXCore.statusFlags |= CmdNew
-#define ILCMD_DDT(x) controllerCommand = M_DDT | x; hpilXCore.statusFlags |= CmdNew
+#define ILCMD_PPE(x)  controllerCommand = M_PPE | x; hpilXCore.statusFlags |= CmdNew
+#define ILCMD_DDL(x)  controllerCommand = M_DDL | x; hpilXCore.statusFlags |= CmdNew
+#define ILCMD_DDT(x)  controllerCommand = M_DDT | x; hpilXCore.statusFlags |= CmdNew
 // UCG
 #define ILCMD_NOP     controllerCommand = M_NOP    ; hpilXCore.statusFlags |= CmdNew
 #define ILCMD_LLO     controllerCommand = M_LLO    ; hpilXCore.statusFlags |= CmdNew
@@ -149,13 +149,13 @@ protected:
 #define ILCMD_AAU     controllerCommand = M_AAU    ; hpilXCore.statusFlags |= CmdNew
 #define ILCMD_LPD     controllerCommand = M_LPD    ; hpilXCore.statusFlags |= CmdNew
 // LAG
-#define ILCMD_LAD(x) controllerCommand = M_LAD | x; hpilXCore.statusFlags |= CmdNew
+#define ILCMD_LAD(x)  controllerCommand = M_LAD | x; hpilXCore.statusFlags |= CmdNew
 #define ILCMD_UNL     controllerCommand = M_UNL    ; hpilXCore.statusFlags |= CmdNew
 // TAG
-#define ILCMD_TAD(x) controllerCommand = M_TAD | x; hpilXCore.statusFlags |= CmdNew
+#define ILCMD_TAD(x)  controllerCommand = M_TAD | x; hpilXCore.statusFlags |= CmdNew
 #define ILCMD_UNT     controllerCommand = M_UNT    ; hpilXCore.statusFlags |= CmdNew
 // IDY
-#define ILCMD_IDY     controllerCommand = M_IDY    ; hpilXCore.statusFlags |= CmdNew
+#define ILCMD_IDY(x)  controllerCommand = M_IDY | x; hpilXCore.statusFlags |= CmdNew
 #define ILCMD_ISR     controllerCommand = M_ISR    ; hpilXCore.statusFlags |= CmdNew
 // RDY
 #define ILCMD_RFC     controllerCommand = M_RFC    ; hpilXCore.statusFlags |= CmdNew
