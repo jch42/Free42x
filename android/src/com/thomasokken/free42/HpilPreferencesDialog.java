@@ -26,6 +26,7 @@ import android.content.Context;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.RadioButton;
 import android.widget.Spinner;
@@ -44,11 +45,13 @@ public class HpilPreferencesDialog extends Dialog {
 	private EditText hpilAddrET;
 	private EditText hpilOutPortET;
 	private EditText hpilInPortET;
+	private CheckBox hpilDebugCB;
 
 
 	public HpilPreferencesDialog(Context context) {
         super(context);
         setContentView(R.layout.hpil_preferences_dialog);
+        
         hpilOffRB = (RadioButton) findViewById(R.id.hpilOffRB); 
         hpilOffRB.setOnClickListener(new View.OnClickListener() {
 			public void onClick(View v) {
@@ -73,6 +76,7 @@ public class HpilPreferencesDialog extends Dialog {
 				setModeAvailables();
 			}
 		});
+        
         hpilBTPairingSP = (Spinner) findViewById(R.id.hpilBTPairingSP);
 		Set<BluetoothDevice> setPairedDevices = BluetoothAdapter.getDefaultAdapter().getBondedDevices();
 		BluetoothDevice[] pairedDevices = (BluetoothDevice[]) setPairedDevices.toArray(new BluetoothDevice[setPairedDevices.size()]);
@@ -83,13 +87,18 @@ public class HpilPreferencesDialog extends Dialog {
 		}
 		ArrayAdapter<String> aa = new ArrayAdapter<String>(context, android.R.layout.simple_spinner_item, values);
         hpilBTPairingSP.setAdapter(aa);
+        
         hpilAddrET = (EditText) findViewById(R.id.hpilAddrET);
         hpilOutPortET = (EditText) findViewById(R.id.hpilOutPortET);
         hpilInPortET = (EditText) findViewById(R.id.hpilInPortET);
+        
         hpilLatencySP = (Spinner) findViewById(R.id.hpilLatencySP);
         values = new String[] { "1", "2", "4", "8" };
         aa = new ArrayAdapter<String>(context, android.R.layout.simple_spinner_item, values);
         hpilLatencySP.setAdapter(aa);
+        
+        hpilDebugCB = (CheckBox) findViewById(R.id.hpilDebugCB);
+        
         Button hpilOkB = (Button) findViewById(R.id.hpilOkB);
         hpilOkB.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
@@ -98,12 +107,14 @@ public class HpilPreferencesDialog extends Dialog {
                 HpilPreferencesDialog.this.hide();
             }
         });
+        
         Button hpilCancelB = (Button) findViewById(R.id.hpilCancelB);
         hpilCancelB.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
                 HpilPreferencesDialog.this.hide();
             }
         });
+        
         setTitle("HP-IL Preferences");
     }
 
@@ -204,6 +215,14 @@ public class HpilPreferencesDialog extends Dialog {
 		return Integer.parseInt(hpilInPortET.getText().toString());
 	}
 
+	public void setDebug(boolean state) {
+		hpilDebugCB.setChecked(state);
+	}
+	
+	public boolean getDebug() {
+		return hpilDebugCB.isChecked();
+	}
+	
 	private void setModeAvailables() {
 		if (hpilModeIPRB.isChecked()) {
 			hpilBTPairingSP.setEnabled(false);

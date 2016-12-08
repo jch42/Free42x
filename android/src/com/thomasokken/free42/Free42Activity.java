@@ -162,6 +162,9 @@ public class Free42Activity extends Activity {
 	private boolean modeSerial;
 	private boolean modePilBox;
 
+	// HPIL Non persistent
+	private boolean debug;
+	
 	// HPIL Power management
 	private boolean timeout4_active;
 	
@@ -177,6 +180,11 @@ public class Free42Activity extends Activity {
 	private int txFrameCount;
 	private int timeStretch;
 	private int lastFrame = 0xffff;
+	
+	// Self log utilities
+	private static final int MAX_SELF_LOG_LINES = 1000;
+	private int selfLogLines = 0;
+	private String selfLogString = ""; 
 
     private final Runnable repeaterCaller = new Runnable() { public void run() { repeater(); } };
     private final Runnable timeout1Caller = new Runnable() { public void run() { timeout1(); } };
@@ -307,7 +315,6 @@ public class Free42Activity extends Activity {
         soundIds = new int[soundResourceIds.length];
         for (int i = 0; i < soundResourceIds.length; i++)
             soundIds[i] = soundPool.load(this, soundResourceIds[i], 1);
-        // power management, keep device on during i/o's
     }
     
     @Override
@@ -714,6 +721,10 @@ public class Free42Activity extends Activity {
     }
         
     private void doHpilPreferences() {
+    	if (debug) {
+    		alert(selfLogString);
+    		selfLogString = "";
+    	}
         if (hpilPreferencesDialog == null) {
             hpilPreferencesDialog = new HpilPreferencesDialog(this);
             hpilPreferencesDialog.setOkListener(new HpilPreferencesDialog.OkListener() {
@@ -739,6 +750,7 @@ public class Free42Activity extends Activity {
         hpilPreferencesDialog.setOutPort(outTcpPort);
         hpilPreferencesDialog.setInPort(inTcpPort);
         hpilPreferencesDialog.setLatency(latency);
+        hpilPreferencesDialog.setDebug(debug);
         hpilPreferencesDialog.show();
     }
     
@@ -806,6 +818,7 @@ public class Free42Activity extends Activity {
     	modeIP = hpilPreferencesDialog.getModeIP();
     	modeSerial = hpilPreferencesDialog.getModeBluetooth();
     	modePilBox = hpilPreferencesDialog.getModePilBox();
+    	debug = hpilPreferencesDialog.getDebug();
     	shell_close_port();
     	shell_init_port();
     }
@@ -1325,7 +1338,8 @@ public class Free42Activity extends Activity {
             // current version (SHELL_VERSION = 10),
             // so nothing to do here since everything
             // was initialized from the state file.
-            ;
+        	// but cleanup debug anyway
+            debug = false;
         }
     }
 
@@ -2093,27 +2107,40 @@ public class Free42Activity extends Activity {
         System.err.print(s);
     }
     
+	private void self_log(String s, boolean nl) {
+		selfLogString += s;
+		if (nl) {
+			if(selfLogLines > MAX_SELF_LOG_LINES) {
+				Integer c = selfLogString.indexOf("\n");
+				selfLogString = selfLogString.substring(c + 1);
+			}
+			else {
+				selfLogLines++;
+			}
+			selfLogString += "\n";
+		}
+	}	
+
     private int shell_init_port() {
-    	String h = "";
     	modeHpilEnabled = false;
     	shell_close_port();
     	timeStretch = Integer.parseInt(latency);
     	if (modeIP) {
     		try {
-    			h = "HPIL / IP\n";
+    			if (debug) { self_log("HPIL / IP init",true);};
     			connectClientSocket = new Socket();
-    			h += "Client Socket         - Ok\n";
+    			if (debug) { self_log("Client Socket         - Ok",true);}
     			connectClientSocket.bind(null);
-    			h += "Client Socket Bind    - Ok\n";
+    			if (debug) { self_log("Client Socket Bind    - Ok",true);}
     			connectClientSocket.setSoTimeout(250);
     			connectClientSocket.setTcpNoDelay(true);
     			connectClientSocket.connect(new InetSocketAddress(outIP,outTcpPort),500);
-    			h += "Client Socket Connect - Ok\n";
+    			if (debug) { self_log("Client Socket Connect - Ok",true);}
     			connectClientSocket.setSoLinger(true, 0);
     			writeFrameStream = connectClientSocket.getOutputStream();
-    			h += "Input Stream          - Ok\n";
+    			if (debug) { self_log("Input Stream          - Ok",true);}
     			serverSocket = new ServerSocket(inTcpPort);
-    			h += "Server Socket         - Ok\n";
+    			if (debug) { self_log("Server Socket         - Ok",true);}
     			serverSocket.setSoTimeout(2);
     			// no ingoing connection there...
     			//connectServerSocket = serverSocket.accept();
@@ -2121,35 +2148,34 @@ public class Free42Activity extends Activity {
 				modeHpilEnabled = true;
     		}
     		catch (IOException e) {
+    			if (debug) { self_log("IP init port exception " + e,true);}
     	    	shell_close_port();
     			modeHpilEnabled = false;
-    			h += "Exception ";
-    			h += e;
-    			h += "\n";
     		}
     		if (!modeHpilEnabled) {
-    			alert("HPIL / IP disabled !\n" + h);
+    			alert("HPIL / IP disabled !\n");
+    			if (debug) { self_log("HPIL / IP disabled !",true);}  
     		}
     	}
     	else if (modePilBox | modeSerial) {
     		try {
-    			h = "HPIL / Bluetooth\n";
+    			if (debug) { self_log("HPIL / Bluetooth init",true);};
     			Set<BluetoothDevice> setPairedDevices = BluetoothAdapter.getDefaultAdapter().getBondedDevices();
     			BluetoothDevice[] pairedDevices = (BluetoothDevice[]) setPairedDevices.toArray(new BluetoothDevice[setPairedDevices.size()]);
-    			h = "Bluetooth get devices           - Ok\n";
+    			if (debug) { self_log("Bluetooth get devices           - Ok", true);}
     			for (int i = 0; i < pairedDevices.length; i++) {
-        			h = "Bluetooth device : " + pairedDevices[i].getName() + "\n";
+        			if (debug) { self_log("Bluetooth device : " + pairedDevices[i].getName(),true);}
     				if (pairedDevices[i].getName().equals(BtPair)) {
     					BtDevice = pairedDevices[i];
     					// UUID is 'well known SPP'
     					BtSocket = BtDevice.createRfcommSocketToServiceRecord(UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"));
-    	    			h = "Bluetooth socket        - Ok\n";
+    					if (debug) { self_log("Bluetooth socket        - Ok",true);}
     					readFrameStream = new BufferedInputStream (BtSocket.getInputStream());
-    	    			h = "Bluetooth input stream  - Ok\n";
+    					if (debug) { self_log("Bluetooth input stream  - Ok",true);}
     					writeFrameStream = BtSocket.getOutputStream();
-    	    			h = "Bluetooth output stream - Ok\n";
+    					if (debug) { self_log("Bluetooth output stream - Ok",true);}
     	    			BtSocket.connect();
-    	    			h = "Bluetooth connect       - Ok\n";
+    	    			if (debug) { self_log("Bluetooth connect       - Ok",true);}
     					modeHpilEnabled = true;
     					break;
     				}
@@ -2157,12 +2183,11 @@ public class Free42Activity extends Activity {
     		}
     		catch (IOException e) {
     			modeHpilEnabled = false;
-    			h += "Exception ";
-    			h += e;
-    			h += "\n";
+    			if (debug) { self_log("BT init port exception " + e,true);}
     		}
     		if (!modeHpilEnabled) {
-    			alert("HPIL / Bluetooth disabled !\n" + h);
+    			alert("HPIL / Bluetooth disabled !\n");
+    			if (debug) { self_log("HPIL / Bluetooth disabled !",true);}
     		}
     	}
     	hpil_init(modeHpilEnabled, modeIP, modePilBox);
@@ -2179,51 +2204,70 @@ public class Free42Activity extends Activity {
     	int ret = 1;					// presume connectivity Ok.
     	int needReconnection = 0;
 		txFrameCount = 0;
-		if (writeFrameStream == null || readFrameStream == null) {
+		if (debug) { self_log("Check connectivity",true);}
+		if (writeFrameStream == null) {
+			if (debug) { self_log("no write stream",true);}
 			needReconnection++;
 		}
+		if (readFrameStream == null) {
+			if (debug) { self_log("no read stream",true);}
+			needReconnection++;
+		}
+    	if (needReconnection != 0) {
+    		if (debug) { self_log("no stream",true);}
+    	}
 		else if (modeIP) {
 			try {
 				if (connectClientSocket != null) {
 					if (!connectClientSocket.isConnected()) {
+						if (debug) { self_log("Client socket closed",true);}
 						needReconnection++;
 					}
 				}
 				else {
+					if (debug) { self_log("No client socket",true);}
 					needReconnection++;
 				}
 				if (serverSocket != null) {
 					if (serverSocket.isClosed()) {
+						if (debug) { self_log("Server socket closed",true);}
 						needReconnection++;
 					}
 					else if (!serverSocket.isBound()) {
+						if (debug) { self_log("Server socket unbound",true);}
 						needReconnection++;
 					}
 				}
 				else {
+					if (debug) { self_log("No server socket",true);}
 					needReconnection++;
 				}
 			}
 	    	catch (Exception e) {
+    			if (debug) { self_log("IP check xception " + e,true);}
 	    		needReconnection++;
 	    	}
 	    }
 		else if (modeSerial || modePilBox) {
 			try {
 				if (BtSocket == null) {
+	    			if (debug) { self_log("No BT socket",true);}
 					needReconnection++;
 				}
 			}
 			catch (Exception e) {
+    			if (debug) { self_log("BT check exception",true);}
 				needReconnection++;
 			}
 		}
 		else {
 			// should not occur
+			if (debug) { self_log("Unexpected",true);}
 			needReconnection++;
 		}
 		if (needReconnection != 0) {
 			shell_close_port();
+			if (debug) { self_log("Check_Connectivity failed",true);}
 			ret = shell_init_port();
 		}
     	return ret;
@@ -2237,13 +2281,15 @@ public class Free42Activity extends Activity {
      */
     public int shell_write_frame(byte[] buf) {
     	int ret = 0;
+		int tx = (buf[0]<<8) + (buf[1] & 0x00ff);
+		if (debug){ self_log("\nWriting : " + Integer.toHexString(tx),true);}
 		if (writeFrameStream != null) {
 			if (modeSerial || modePilBox) {
 				int bufLen = 0;
-				int tx = (buf[0]<<8) + (buf[1] & 0x00ff);
 				if ((tx & 0x0780) != lastFrame) {
 					lastFrame = tx & 0x0780;
 					buf[bufLen++] = (byte) (((tx >> 6) & 0x1e) | 0x0020);
+					if (debug){ self_log(" b[0]:" + Integer.toHexString(buf[0] & 0xff),false);}
 				}
 				else {
 					// 'resize' buf to 1 byte
@@ -2251,6 +2297,9 @@ public class Free42Activity extends Activity {
 					buf = outBuf;
 				}
 				buf[bufLen++] = (byte) ((tx & 0x007f) | 0x0080);
+				if (debug){ self_log(
+					" b[" + (bufLen - 1) + "]:"
+					+ Integer.toHexString(buf[bufLen - 1] & 0xff),true);}
 			}
 			try {
 				writeFrameStream.write(buf);
@@ -2258,13 +2307,14 @@ public class Free42Activity extends Activity {
 				ret = 1;
 			}
 			catch (Exception e) {
+    			if (debug) { self_log("Write exception " + e,true);}
 				ret = 0;
 				shell_close_port();
 			}
 		}
 		if (ret != 0) {
 			if (txFrameCount-- == 0) {
-				// keep on for 36 x 3000 ms max				}
+				// keep awake for 36 x 3000 ms max				}
 				shell_request_timeout4(108000);
 				txFrameCount = 36 / timeStretch;
 			}
@@ -2280,39 +2330,44 @@ public class Free42Activity extends Activity {
      */
     public int shell_read_frame(byte[] buf) {
     	int ret = 0;
+		int i;
+    	String h="";
     	try {
     		if (modeIP) {
     			if (connectServerSocket == null) {
-        			//shell_log("receiving IP frame connect\n");
+    				if (debug) { self_log("IP read init server socket",true);}
         			connectServerSocket = serverSocket.accept();
         			connectServerSocket.setSoLinger(true, 0);
     			}
     	   		if (readFrameStream == null) {
-        			//shell_log("receiving frame getInputStream\n");
+    				if (debug) { self_log("IP read init input stream",true);}
        				readFrameStream = new BufferedInputStream(connectServerSocket.getInputStream());
        			}
            		ret = readFrameStream.available();
         		if (ret == 2) {
         			// frame received
         			readFrameStream.read(buf, 0, 2);
+              		if (debug) {
+       	    			self_log("\nIP read : " + Integer.toHexString((buf[1] & 0xff) + (buf[0] << 8)),true);
         			}
+        		}
         		else if (ret > 2) {
         			// something went wrong, throw received data away
-        			//shell_log("receiving frame skip data\n");
+    				if (debug) { self_log("IP skip frame",true);}
         			readFrameStream.skip(ret);
         		}
         		else {
         			// no timeout for BufferedInputStream.read...
+        			if (debug) {self_log("r",false);}
         			Thread.sleep(2 * timeStretch);
         		}
        		}
     		if (modeSerial || modePilBox) {
+    			int len = 0;
+				int rx = 0;
+				byte[] rxBuf = new byte[3];
     			if (readFrameStream != null) {
-    				//shell_log("receiving frame getInputStream\n");
-    				int len = readFrameStream.available();
-    				int rx;
-    				byte[] rxBuf = new byte[3];
-    				int i;
+    				len = readFrameStream.available();
     				if (len == 0) {
     					// no timeout for BufferedInputStream.read...
     					Thread.sleep(2 * timeStretch);
@@ -2322,16 +2377,13 @@ public class Free42Activity extends Activity {
     					for (i = 0; i < len; i++) {
     						if (rxBuf[i] == 0x0d) {
     							// skip
-    							//shell_log("receiving frame skip 0x0d\n");
     						}
     						else if ((rxBuf[i] & 0x00e1) == 0x0020) {
     							// msb frame ?
-    							//shell_log("receiving frame msb\n");
     							lastFrame = (int) (rxBuf[i] & 0x001e) << 6;
     						}
-    						else if ((rxBuf[i] & 0x0080) == 0x0080){
+    						else if ((rxBuf[i] & 0x0080) == 0x0080) {
     							// lsb frame ?
-    							//shell_log("receiving frame lsb\n");
     							rx = lastFrame | (int)(rxBuf[i] & 0x007f);
     							buf[0] = (byte) (rx >> 8);
     							buf[1] = (byte) (rx & 0x00ff);
@@ -2339,22 +2391,55 @@ public class Free42Activity extends Activity {
     						}
     						else {
     							// should not occur
-    							//shell_log("receiving frame error\n");
+    		    				if (debug) { self_log("BT unexpected error",true);}
     							ret = 0;
     						}
     					}
     				}
-    				else  {
-    					// something went wrong, throw received data away
-    					//shell_log("receiving frame skip data\n");
-    					readFrameStream.skip(ret);
-    					ret = 0;
-    				}
+					else  {
+						// something went wrong, throw received data away
+						if (debug) {
+							self_log("BT skip frame - received : " + len,true);
+							byte[] rxDBuf = new byte[len];
+	    					readFrameStream.read(rxDBuf, 0, len);
+	       					h += "\nBT Read :";
+	       					for (i = 0; i < len; i++) {
+	       						h += " b[";
+	       						h += i;
+	       						h += "]:";
+	        					h += Integer.toHexString(rxDBuf[i] & 0xff);
+	        				}
+	    	    			self_log(h,true);
+						}
+						else {
+							readFrameStream.skip(len);
+						}
+						ret = 0;
+					}
+				}
+				else {
+					if (debug) { self_log("BT no read stream",true);}
+				}
+        		if (debug) {
+        			if (len != 0 && len <= 3) {
+       					h += "\nBT Read :";
+       					for (i = 0; i < len; i++) {
+       						h += " b[";
+       						h += i;
+       						h += "]:";
+        					h += Integer.toHexString(rxBuf[i] & 0xff);
+        				}
+        				h += " > " + Integer.toHexString(rx);
+    	    			self_log(h,true);
+        			}
+       				else {
+        				self_log("r",false);
+        			}
     			}
     		}
     	}
     	catch (Exception e) {
-			//shell_log("receiving frame Exception\n");
+			if (debug) { self_log("Read exception " + e,true);}
     		ret = 0;
     	}
     	return ret;
@@ -2417,3 +2502,4 @@ public class Free42Activity extends Activity {
     	}
     }
 }
+

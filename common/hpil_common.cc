@@ -340,7 +340,7 @@ int hpil_write_frame() {
 		return ERR_BROKEN_IP;
 	}
 	if ((frame & 0x0600) == 0x0600) {	// IDY
-		loopTimeout = 25;				// 25 x 2 ms shell timeout -> 50 ms
+		loopTimeout = 125;				// 125 x 2 ms shell timeout -> 250 ms (augmented from initial 50 ms, too much latency for idy)
 	}
 	else if (frame == 0x0490) {			// IFC - special timing - increase timing at each loop
 		loopTimeout = 50 * (16 - IFCCountdown);
