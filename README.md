@@ -46,7 +46,11 @@ SOME NOTES :
 		2) remove Free42 (WARNING - you will lose your programs, data... ), as Android will try (and fail) to upgrade.
 		3) get the package on your device and install it.
 	Bluetooth mode is very unstable yet. AFAIK, seems linked to the device.
-	Ok on a Samsung ACE GT-S5830 Gingerbread 2.3.3, some issues on Google Nexus 4 Lollipop 5.1.1.
+	Ok on a Samsung ACE GT-S5830 Gingerbread 2.3.3, Samsung Galaxy Tab3 Lite Kitkat 4.4.4 & some issues on Google Nexus 4 Lollipop 5.1.1.
+	Some hints on Bluetooth issues I encountered
+	- Latency, about 10 ms and inconstancy between different Android releases and devices.
+	- IFC/RFC handshake & IDY timeout bugs.
+	- Bluetooth stack on Nexus 4 / Lollipop 5.1.1 seems to break the connexion after about 10s idle.
 * Windows :
 	Free42x files are suffixed with a 'x' to avoid messing with original Free42 files.
 	At the very first run, Free42x will try to read the Free42 state.bin file in a attempt to import the configuration.
