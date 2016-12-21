@@ -2653,7 +2653,7 @@ int shell_read_IP(int *rx) {
 
 static void shell_close_IP() {
 	//shutdown(clientSocket, SD_BOTH);
-	//closesocket(clientSocket);
+	closesocket(clientSocket);
 	//shutdown(serverSocket[1], SD_BOTH);
 	//closesocket(serverSocket[1]);
 	//shutdown(serverSocket[0], SD_BOTH);

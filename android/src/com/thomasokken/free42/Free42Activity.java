@@ -2136,7 +2136,7 @@ public class Free42Activity extends Activity {
     			connectClientSocket.setTcpNoDelay(true);
     			connectClientSocket.connect(new InetSocketAddress(outIP,outTcpPort),500);
     			if (debug) { self_log("Client Socket Connect - Ok",true);}
-    			connectClientSocket.setSoLinger(true, 0);
+    			connectClientSocket.setSoLinger(true, 2);
     			writeFrameStream = connectClientSocket.getOutputStream();
     			if (debug) { self_log("Input Stream          - Ok",true);}
     			serverSocket = new ServerSocket(inTcpPort);
