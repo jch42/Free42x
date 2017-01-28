@@ -1,7 +1,7 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
- * Copyright (C) 2015-2016  Jean-Christophe Hessemann, hpil extensions
+ * Copyright (C) 2004-2017  Thomas Okken
+ * Copyright (C) 2015-2017  Jean-Christophe Hessemann, hpil extensions
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -771,9 +771,6 @@ static int hpil_inx_completion(int error) {
 							reg_alpha[i+1] = hpilXCore.buf[i];
 						}
 						reg_alpha_length = i+1;
-						if (flags.f.trace_print && flags.f.printer_exists) {
-							docmd_pra(NULL);
-						}
 						switch (ioEndMethod) {
 							case MethodChar :
 								flags.f.hpil_ina_err = (hpilXCore.statusFlags & ListenTilChar) ? 1 : 0;

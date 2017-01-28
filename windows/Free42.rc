@@ -51,16 +51,19 @@ IDC_FREE42 MENU
 // Dialog resources
 //
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
-IDD_ABOUTBOX DIALOG 4294967259, 40, 225, 53
+IDD_ABOUTBOX DIALOG 4294967259, 40, 225, 83
 STYLE DS_MODALFRAME | DS_SETFONT | WS_CAPTION | WS_SYSMENU
 CAPTION "About Free42"
 FONT 8, "System"
 {
     ICON            IDI_FREE42, IDC_STATIC, 9, 7, 16, 16, SS_ICON, WS_EX_LEFT
     LTEXT           FREE42_VERSION_1, IDC_STATIC, 31, 4, 99, 8, SS_LEFT | SS_NOPREFIX, WS_EX_LEFT
-    LTEXT           "© 2004-2016 Thomas Okken, © 2015-2016 J.C. Hessemann", IDC_STATIC, 31, 17, 191, 8, SS_LEFT, WS_EX_LEFT
+    LTEXT           "© 2004-2017 Thomas Okken", IDC_STATIC, 31, 17, 191, 8, SS_LEFT, WS_EX_LEFT
     LTEXT           "http://thomasokken.com/free42/", IDC_WEBSITELINK, 31, 27, 191, 8, SS_LEFT | SS_NOTIFY, WS_EX_LEFT
     LTEXT           "http://groups.google.com/group/free42discuss", IDC_FORUMLINK, 31, 37, 191, 8, SS_LEFT | SS_NOTIFY, WS_EX_LEFT
+    LTEXT           "HP-IL eXtensions", IDC_STATIC, 31, 50, 191, 8, SS_LEFT, WS_EX_LEFT
+    LTEXT           "© 2015-2017 J.C. Hessemann", IDC_STATIC, 31, 63, 191, 8, SS_LEFT, WS_EX_LEFT
+    LTEXT           "https://github.com/jch42/Free42x/tree/HP-IL-Injection", IDC_WEBSITELINK, 31, 73, 191, 8, SS_LEFT | SS_NOTIFY, WS_EX_LEFT
     DEFPUSHBUTTON   "OK", IDOK, 189, 6, 30, 11, WS_GROUP, WS_EX_LEFT
 }
 

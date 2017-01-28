@@ -1,6 +1,7 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
+ * Copyright (C) 2016-2017  J.C.Hessemann
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -860,7 +861,7 @@ public class Free42Activity extends Activity {
 
                 TextView label2 = new TextView(context);
                 label2.setId(3);
-                label2.setText("(C) 2004-2016 Thomas Okken");
+                label2.setText("(C) 2004-2017 Thomas Okken");
                 lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
                 lp.addRule(RelativeLayout.ALIGN_LEFT, label1.getId());
                 lp.addRule(RelativeLayout.BELOW, label1.getId());
@@ -888,8 +889,35 @@ public class Free42Activity extends Activity {
                 lp.addRule(RelativeLayout.BELOW, label3.getId());
                 addView(label4, lp);
 
+                TextView label5 = new TextView(context);
+                label5.setId(6);
+                label5.setText("HP-IL eXtensions");
+                lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+                lp.addRule(RelativeLayout.ALIGN_LEFT, label4.getId());
+                lp.addRule(RelativeLayout.BELOW, label4.getId());
+                addView(label5, lp);
+
+                TextView label6 = new TextView(context);
+                label6.setId(7);
+                label6.setText("(C) 2015-2017 J.C. Hessemann");
+                lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+                lp.addRule(RelativeLayout.ALIGN_LEFT, label5.getId());
+                lp.addRule(RelativeLayout.BELOW, label5.getId());
+                addView(label6, lp);
+                
+                TextView label7 = new TextView(context);
+                label7.setId(8);
+                s = new SpannableString("https://github.com/jch42/Free42x/tree/HP-IL-Injection");
+                Linkify.addLinks(s, Linkify.WEB_URLS);
+                label7.setText(s);
+                label7.setMovementMethod(LinkMovementMethod.getInstance());
+                lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+                lp.addRule(RelativeLayout.ALIGN_LEFT, label6.getId());
+                lp.addRule(RelativeLayout.BELOW, label6.getId());
+                addView(label7, lp);
+
                 Button okB = new Button(context);
-                okB.setId(6);
+                okB.setId(9);
                 okB.setText("OK");
                 okB.setOnClickListener(new OnClickListener() {
                     public void onClick(View view) {
@@ -897,7 +925,7 @@ public class Free42Activity extends Activity {
                     }
                 });
                 lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
-                lp.addRule(RelativeLayout.BELOW, label4.getId());
+                lp.addRule(RelativeLayout.BELOW, label7.getId());
                 lp.addRule(RelativeLayout.CENTER_HORIZONTAL);
                 addView(okB, lp);
 
