@@ -6,7 +6,6 @@
 #include <commctrl.h>
 #include <richedit.h>
 #include "resource.h"
-#include "..\VERSION.rc"
 
 
 
@@ -57,7 +56,7 @@ CAPTION "About Free42"
 FONT 8, "System"
 {
     ICON            IDI_FREE42, IDC_STATIC, 9, 7, 16, 16, SS_ICON, WS_EX_LEFT
-    LTEXT           FREE42_VERSION_1, IDC_STATIC, 31, 4, 99, 8, SS_LEFT | SS_NOPREFIX, WS_EX_LEFT
+    LTEXT           "Free42x 1.5.14", IDC_STATIC, 31, 4, 99, 8, SS_LEFT | SS_NOPREFIX, WS_EX_LEFT
     LTEXT           "© 2004-2017 Thomas Okken", IDC_STATIC, 31, 17, 191, 8, SS_LEFT, WS_EX_LEFT
     LTEXT           "http://thomasokken.com/free42/", IDC_WEBSITELINK, 31, 27, 191, 8, SS_LEFT | SS_NOTIFY, WS_EX_LEFT
     LTEXT           "http://groups.google.com/group/free42discuss", IDC_FORUMLINK, 31, 37, 191, 8, SS_LEFT | SS_NOTIFY, WS_EX_LEFT
@@ -107,7 +106,7 @@ FONT 8, "Ms Shell Dlg"
 
 
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
-IDD_PREFERENCES DIALOG 4294967236, 36, 322, 159
+IDD_PREFERENCES DIALOG 4294967236, 36, 322, 148
 STYLE DS_MODALFRAME | DS_SETFONT | WS_CAPTION | WS_POPUP | WS_SYSMENU
 CAPTION "Preferences"
 FONT 8, "MS Sans Serif"
@@ -116,19 +115,18 @@ FONT 8, "MS Sans Serif"
     AUTOCHECKBOX    "Overflows during matrix operations yield ""Out of Range"" error", IDC_MATRIX_OUTOFRANGE, 7, 18, 213, 10, 0, WS_EX_LEFT
     AUTOCHECKBOX    "Auto-Repeat for number entry and ALPHA mode", IDC_AUTO_REPEAT, 7, 29, 213, 10, 0, WS_EX_LEFT
     AUTOCHECKBOX    "Keep Free42 window always on top", IDC_ALWAYSONTOP, 7, 40, 128, 10, 0, WS_EX_LEFT
-    AUTOCHECKBOX    "Map ""Calculator"" key to Free42", IDC_CALCULATOR_KEY, 7, 51, 128, 10, 0, WS_EX_LEFT
-    AUTOCHECKBOX    "Single instance", IDC_SINGLEINSTANCE, 7, 62, 128, 10, 0, WS_EX_LEFT
-    AUTOCHECKBOX    "Write printer output to text file:", IDC_PRINTER_TXT, 7, 77, 112, 10, 0, WS_EX_LEFT
-    EDITTEXT        IDC_PRINTER_TXT_NAME, 125, 75, 132, 14, ES_AUTOHSCROLL, WS_EX_LEFT
-    PUSHBUTTON      "Browse...", IDC_PRINTER_TXT_BROWSE, 265, 75, 50, 14, 0, WS_EX_LEFT
-    AUTOCHECKBOX    "Raw text", IDC_RAW_TEXT, 215, 91, 47, 10, 0, WS_EX_LEFT
-    AUTOCHECKBOX    "Write printer output to GIF file:", IDC_PRINTER_GIF, 7, 106, 110, 10, 0, WS_EX_LEFT
-    EDITTEXT        IDC_PRINTER_GIF_NAME, 125, 104, 132, 14, ES_AUTOHSCROLL, WS_EX_LEFT
-    PUSHBUTTON      "Browse...", IDC_PRINTER_GIF_BROWSE, 265, 104, 50, 14, 0, WS_EX_LEFT
-    LTEXT           "Maximum GIF height (pixels):", IDC_STATIC, 124, 125, 90, 8, SS_LEFT, WS_EX_LEFT
-    EDITTEXT        IDC_PRINTER_GIF_HEIGHT, 217, 122, 40, 14, ES_AUTOHSCROLL, WS_EX_LEFT
-    DEFPUSHBUTTON   "OK", IDOK, 7, 139, 50, 14, 0, WS_EX_LEFT
-    PUSHBUTTON      "Cancel", IDCANCEL, 65, 139, 50, 14, 0, WS_EX_LEFT
+    AUTOCHECKBOX    "Single instance", IDC_SINGLEINSTANCE, 7, 51, 128, 10, 0, WS_EX_LEFT
+    AUTOCHECKBOX    "Write printer output to text file:", IDC_PRINTER_TXT, 7, 66, 112, 10, 0, WS_EX_LEFT
+    EDITTEXT        IDC_PRINTER_TXT_NAME, 125, 64, 132, 14, ES_AUTOHSCROLL, WS_EX_LEFT
+    PUSHBUTTON      "Browse...", IDC_PRINTER_TXT_BROWSE, 265, 64, 50, 14, 0, WS_EX_LEFT
+    AUTOCHECKBOX    "Raw text", IDC_RAW_TEXT, 215, 80, 47, 10, 0, WS_EX_LEFT
+    AUTOCHECKBOX    "Write printer output to GIF file:", IDC_PRINTER_GIF, 7, 95, 110, 10, 0, WS_EX_LEFT
+    EDITTEXT        IDC_PRINTER_GIF_NAME, 125, 93, 132, 14, ES_AUTOHSCROLL, WS_EX_LEFT
+    PUSHBUTTON      "Browse...", IDC_PRINTER_GIF_BROWSE, 265, 93, 50, 14, 0, WS_EX_LEFT
+    LTEXT           "Maximum GIF height (pixels):", IDC_STATIC, 124, 114, 90, 8, SS_LEFT, WS_EX_LEFT
+    EDITTEXT        IDC_PRINTER_GIF_HEIGHT, 217, 111, 40, 14, ES_AUTOHSCROLL, WS_EX_LEFT
+    DEFPUSHBUTTON   "OK", IDOK, 7, 128, 50, 14, 0, WS_EX_LEFT
+    PUSHBUTTON      "Cancel", IDCANCEL, 65, 128, 50, 14, 0, WS_EX_LEFT
 }
 
 
@@ -208,12 +206,12 @@ VS_VERSION_INFO VERSIONINFO
         BLOCK "040904B0"
         {
             VALUE "FileDescription", "HP-42S Calculator Simulator\0"
-            VALUE "FileVersion", FREE42_VERSION_2
+            VALUE "FileVersion", "1.5.14\0"
             VALUE "InternalName", "Free42\0"
-            VALUE "LegalCopyright", "Copyright © 2004-2016 Thomas Okken & HP-IL © 2015-2016 J.C. Hessemann\0"
+            VALUE "LegalCopyright", "Copyright © 2004-2017 Thomas Okken & HP-IL © 2015-2017 J.C. Hessemann\0"
             VALUE "OriginalFilename", "Free42.exe\0"
             VALUE "ProductName", "Free42\0"
-            VALUE "ProductVersion", FREE42_VERSION_2
+            VALUE "ProductVersion", "1.5.14\0"
         }
     }
     BLOCK "VarFileInfo"

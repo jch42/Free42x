@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -36,6 +36,7 @@ phloat POS_HUGE_PHLOAT;
 phloat NEG_HUGE_PHLOAT;
 phloat POS_TINY_PHLOAT;
 phloat NEG_TINY_PHLOAT;
+phloat NAN_PHLOAT;
 
 
 /* Note: this function does not handle infinities or NaN */
@@ -82,7 +83,7 @@ static void bcdfloat_old2new(void *bcd) {
 
 
 void phloat_init() {
-    BID_UINT128 posinf, neginf, zero, poshuge, neghuge, postiny, negtiny;
+    BID_UINT128 posinf, neginf, zero, poshuge, neghuge, postiny, negtiny, nan;
     bid128_from_string(&posinf, (char *) "+Inf");
     bid128_from_string(&neginf, (char *) "-Inf");
     int z = 0;
@@ -95,6 +96,8 @@ void phloat_init() {
     NEG_HUGE_PHLOAT = neghuge;
     POS_TINY_PHLOAT = postiny;
     NEG_TINY_PHLOAT = negtiny;
+    bid128_div(&nan, &zero, &zero);
+    NAN_PHLOAT = nan;
 }
 
 int string2phloat(const char *buf, int buflen, phloat *d) {
@@ -791,6 +794,8 @@ void phloat_init() {
     POS_TINY_PHLOAT = d;
 #endif
     NEG_TINY_PHLOAT = -POS_TINY_PHLOAT;
+    double zero = 0.0;
+    NAN_PHLOAT = zero / 0.0;	
 }
 
 int string2phloat(const char *buf, int buflen, phloat *d) {

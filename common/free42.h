@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -135,9 +135,10 @@ extern "C" double log2(double x);
  * Version 18: 1.4.79 Replaced BCD20 with Intel's Decimal Floating Point
  *                    Library v.2.1.
  * Version 19: 1.9.0  Adding HPIL
+ * Version 20: 1.5.14 Removed mode_time_dmy; now using flag 31 instead (version 19 in Free42)
  */
 #define FREE42_MAGIC 0x466b3432
-#define FREE42_VERSION 19
+#define FREE42_VERSION 20
 
 
 #endif

@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -609,7 +609,6 @@ int4 mode_sigma_reg;
 int mode_goose;
 bool mode_time_clktd;
 bool mode_time_clk24;
-bool mode_time_dmy;
 
 phloat entered_number;
 int entered_string_length;
@@ -1171,8 +1170,6 @@ static bool persist_globals() {
         goto done;
     if (!write_bool(mode_time_clk24))
         goto done;
-    if (!write_bool(mode_time_dmy))
-        goto done;
     if (!shell_write_saved_state(&flags, sizeof(flags_struct)))
         goto done;
     if (!write_int(vars_count))
@@ -1239,6 +1236,7 @@ static bool unpersist_globals(int4 ver) {
 #else
     bool padded = false;
 #endif
+    char tmp_dmy = 2;
 
     free_vartype(reg_x);
     if (!unpersist_vartype(&reg_x, padded))
@@ -1288,14 +1286,18 @@ static bool unpersist_globals(int4 ver) {
             mode_time_clk24 = false;
             goto done;
         }
-        if (!read_bool(&mode_time_dmy)) {
-            mode_time_dmy = false;
-            goto done;
+        if (ver < 20) {
+            bool dmy;
+            if (!read_bool(&dmy))
+                goto done;
+            tmp_dmy = dmy ? 1 : 0;
         }
     }
     if (shell_read_saved_state(&flags, sizeof(flags_struct))
             != sizeof(flags_struct))
         goto done;
+    if (tmp_dmy != 2)
+        flags.f.dmy = tmp_dmy;
     vars_capacity = 0;
     if (vars != NULL) {
         free(vars);
@@ -2648,7 +2650,7 @@ void hard_reset(int bad_state_file) {
     flags.f.decimal_point = shell_decimal_point(); // HP-42S sets this to 1 on hard reset
     flags.f.thousands_separators = 1;
     flags.f.stack_lift_disable = 0;
-    flags.f.f31 = 0;
+    flags.f.dmy = 0;
 	flags.f.manual_IO_mode = 0;
 	flags.f.f33 = 0;
     flags.f.agraph_control1 = 0;
@@ -2722,7 +2724,6 @@ void hard_reset(int bad_state_file) {
     mode_goose = -1;
     mode_time_clktd = false;
     mode_time_clk24 = false;
-    mode_time_dmy = false;
 
     core_settings.auto_repeat = true;
     #if defined(COPAN)

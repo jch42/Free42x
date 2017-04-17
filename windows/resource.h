@@ -26,7 +26,6 @@
 #define IDC_RAW_TEXT                            1013
 #define IDC_ALWAYSONTOP                         1014
 #define IDC_SINGLEINSTANCE                      1015
-#define IDC_CALCULATOR_KEY                      1016
 #define IDC_WEBSITELINK                         1017
 #define IDC_FORUMLINK                           1018
 #define IDM_SHOWPRINTOUT                        32771

@@ -352,7 +352,7 @@ public class Free42Activity extends Activity {
         }
         // Write state file
         try {
-            stateFileOutputStream = openFileOutput(stateFile, Context.MODE_PRIVATE);
+            stateFileOutputStream = openFileOutput(stateFile + ".new", Context.MODE_PRIVATE);
         } catch (FileNotFoundException e) {
             stateFileOutputStream = null;
         }
@@ -364,7 +364,14 @@ public class Free42Activity extends Activity {
             try {
                 stateFileOutputStream.close();
             } catch (IOException e) {}
-            stateFileOutputStream = null;
+            // Writing state file succeeded; rename state.new to state
+            File filesDir = getFilesDir();
+            new File(filesDir, stateFile + ".new").renameTo(new File(filesDir, stateFile));
+			stateFileOutputStream = null;
+        } else {
+            // Writing state file failed; delete state.new, if it even exists
+            File filesDir = getFilesDir();
+            new File(filesDir, stateFile + ".new").delete();
         }
         printView.dump();
         if (printTxtStream != null) {
