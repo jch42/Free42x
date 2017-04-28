@@ -1106,11 +1106,11 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
             if (visdigits > digits)
                 visdigits = digits;
             carry = norm_fp[visdigits] >= 5;
-            for (i = visdigits; i < 27; i++)
+            for (i = visdigits; i < max_frac_digits; i++)
                 norm_fp[i] = 0;
             if (!carry)
                 goto done_rounding;
-            for (i = visdigits; i < max_frac_digits; i++) {
+            for (i = visdigits - 1; i >= 0; i--) {
                 char c = norm_fp[i] + 1;
                 if (c < 10) {
                     norm_fp[i] = c;
