@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -1026,7 +1026,7 @@ int int2string(int4 n, char *buf, int buflen) {
     return count + uint2string(u, buf + count, buflen - count);
 }
 
-int vartype2string(const vartype *v, char *buf, int buflen) {
+int vartype2string(const vartype *v, char *buf, int buflen, int max_mant_digits) {
     int dispmode;
     int digits = 0;
 
@@ -1048,7 +1048,8 @@ int vartype2string(const vartype *v, char *buf, int buflen) {
         case TYPE_REAL:
             return phloat2string(((vartype_real *) v)->x, buf, buflen,
                                  1, digits, dispmode,
-                                 flags.f.thousands_separators);
+                                 flags.f.thousands_separators,
+                                 max_mant_digits);
 
         case TYPE_COMPLEX: {
             phloat x, y;
@@ -1070,19 +1071,23 @@ int vartype2string(const vartype *v, char *buf, int buflen) {
 
             x_len = phloat2string(x, x_buf, 22,
                                   0, digits, dispmode,
-                                  flags.f.thousands_separators);
+                                 flags.f.thousands_separators,
+                                 max_mant_digits);
             y_len = phloat2string(y, y_buf, 22,
                                   0, digits, dispmode,
-                                  flags.f.thousands_separators);
+                                 flags.f.thousands_separators,
+                                 max_mant_digits);
 
             if (x_len + y_len + 2 > buflen) {
                 /* Too long? Fall back on ENG 2 */
                 x_len = phloat2string(x, x_buf, 22,
                                       0, 2, 2,
-                                      flags.f.thousands_separators);
+									  flags.f.thousands_separators,
+									  max_mant_digits);
                 y_len = phloat2string(y, y_buf, 22,
                                       0, 2, 2,
-                                      flags.f.thousands_separators);
+                                      flags.f.thousands_separators,
+                                      max_mant_digits);
             }
 
             for (i = 0; i < buflen; i++) {
@@ -1167,15 +1172,15 @@ char *phloat2program(phloat d) {
     /* Converts a phloat to its most compact representation;
      * used for generating HP-42S style number literals in programs.
      */
-    static char allbuf[25];
-    static char scibuf[25];
+    static char allbuf[50];
+    static char scibuf[50];
     int alllen;
     int scilen;
     char dot = flags.f.decimal_point ? '.' : ',';
     int decimal, zeroes = 0, last_nonzero, exponent;
     int i;
-    alllen = phloat2string(d, allbuf, 24, 0, 0, 3, 0);
-    scilen = phloat2string(d, scibuf, 24, 0, 11, 1, 0);
+    alllen = phloat2string(d, allbuf, 49, 0, 0, 3, 0, MAX_MANT_DIGITS);
+    scilen = phloat2string(d, scibuf, 49, 0, MAX_MANT_DIGITS - 1, 1, 0, MAX_MANT_DIGITS);
     /* Shorten SCI representation by removing trailing zeroes,
      * and decreasing the exponent until the decimal point
      * shifts out of the mantissa.
@@ -1242,7 +1247,7 @@ char *phloat2program(phloat d) {
                 if (neg)
                     ex = -ex;
                 scilen += int2string(ex, scibuf + exponent,
-                                        50 - exponent);
+                                        49 - exponent);
             }
         }
     }

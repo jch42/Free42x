@@ -1,7 +1,7 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
- * Copyright (C) 2015-2016  Jean-Christophe Hessemann, hpil extensions
+ * Copyright (C) 2004-2017  Thomas Okken
+ * Copyright (C) 2015-2017  Jean-Christophe Hessemann, hpil extensions
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -395,7 +395,7 @@ int docmd_purge(arg_struct *arg) {
 	return ERR_INTERRUPTIBLE;
 }
 
-int docmd_readp2(arg_struct *arg) {
+int docmd_readp(arg_struct *arg) {
 	int i;
 	int err;
 	err = hpil_check();
@@ -1350,7 +1350,7 @@ static void hpil_wrtpRefreshBuf(void) {
 	i = 0;
 	do {
 		done = core_Free42To42(&pc, hpilXCore.buf, &i);
-	} while (i < 0xe6 && !done);
+	} while (i < 0xcd && !done);		// keep enough place for max cmdbuf !
 	hpilXCore.bufSize = i;
 	i--;
 	for (i; i >= 0; i--) {
@@ -1755,7 +1755,7 @@ static void hpil_readrRefreshBuf(void) {
  * process read buffer chunks by chunks and update for next buffer
  */
 static void hpil_readpRefreshBuf(void) {
-	static char buf[0x11a];
+	static char buf[0x133];
 	static char crc;
 	static int read_prgm;
     int error = ERR_NONE, i, j;
@@ -1775,10 +1775,10 @@ static void hpil_readpRefreshBuf(void) {
 	i = 0;
 	// decode loop
 	while ((error == ERR_NONE)
-  		&& ((i < (s.index - 25))
+  		&& ((i < (s.index - 50))
 		|| ((i < (s.index - 1)) && !(hpilXCore.statusFlags & RunAgainListenBuf)))) {
 		j = i;
-		core_42ToFree42((unsigned char*)buf, &i, 30);
+		core_42ToFree42((unsigned char*)buf, &i, 50);
 		for (j; j < i; j++) {
 			// update Crc
 			crc += buf[j];

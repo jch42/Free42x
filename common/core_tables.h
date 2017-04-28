@@ -1,6 +1,7 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
+ * Copyright (C) 2015-2016  Jean-Christophe Hessemann, hpil extensions
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -350,10 +351,10 @@
 #define CMD_MIN         312
 #define CMD_FIND        313
 #define CMD_XROM        314
-/* Underhill's COPAN extensions */
+/* Underhill's COPAN extensions (Obsolete) */
 #define CMD_OPENF       315
 #define CMD_CLOSEF      316
-#define CMD_READP       317
+#define CMD_READK       317			// yep, remove READP from Copan extensions
 #define CMD_WRITEP      318
 #define CMD_GETXY       319
 #define CMD_PUTXY       320
@@ -365,7 +366,7 @@
 #define CMD_GETZ        326
 #define CMD_PUTZ        327
 #define CMD_DELP        328
-/* Byron Foster's Bigstack extension */
+/* Byron Foster's Bigstack extension (Obsolete) */
 #define CMD_DROP        329
 /* iPhone hardware support */
 #define CMD_ACCEL       330
@@ -424,7 +425,7 @@
 #define CMD_DIR			380
 #define CMD_NEWM		381
 #define CMD_PURGE	    382
-#define CMD_READP2		383			// alas, readp alredy used for Copan extensions
+#define CMD_READP		383			// yep, readp freed from Copan extensions
 #define CMD_READR		384
 #define CMD_RENAME		385
 #define CMD_SEC			386

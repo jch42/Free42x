@@ -6,7 +6,7 @@
 #include <commctrl.h>
 #include <richedit.h>
 #include "resource.h"
-
+#include "..\VERSION.rc"
 
 
 
@@ -56,7 +56,7 @@ CAPTION "About Free42"
 FONT 8, "System"
 {
     ICON            IDI_FREE42, IDC_STATIC, 9, 7, 16, 16, SS_ICON, WS_EX_LEFT
-    LTEXT           "Free42x 1.5.14", IDC_STATIC, 31, 4, 99, 8, SS_LEFT | SS_NOPREFIX, WS_EX_LEFT
+    LTEXT           FREE42_VERSION_1, IDC_STATIC, 31, 4, 99, 8, SS_LEFT | SS_NOPREFIX, WS_EX_LEFT
     LTEXT           "© 2004-2017 Thomas Okken", IDC_STATIC, 31, 17, 191, 8, SS_LEFT, WS_EX_LEFT
     LTEXT           "http://thomasokken.com/free42/", IDC_WEBSITELINK, 31, 27, 191, 8, SS_LEFT | SS_NOTIFY, WS_EX_LEFT
     LTEXT           "http://groups.google.com/group/free42discuss", IDC_FORUMLINK, 31, 37, 191, 8, SS_LEFT | SS_NOTIFY, WS_EX_LEFT

@@ -1,6 +1,7 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
+ * Copyright (C) 2015-2016  Jean-Christophe Hessemann, hpil extensions
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -31,6 +32,11 @@
 #include "shell.h"
 #include "shell_spool.h"
 
+#ifndef BCD_MATH
+// We need these locally for BID128->double conversion
+#include "bid_conf.h"
+#include "bid_functions.h"
+#endif
 
 static void set_shift(bool state) {
     if (mode_shift != state) {
@@ -397,7 +403,7 @@ int core_keyup() {
     }
 
     if (pending_command == CMD_NONE)
-        return mode_running || keybuf_head != keybuf_tail;
+        return mode_running || mode_interruptible != NULL || keybuf_head != keybuf_tail;
 
     if (remove_program_catalog) {
         if (mode_transientmenu == MENU_CATALOG)
@@ -491,6 +497,7 @@ int core_keyup() {
 
     if (error == ERR_INTERRUPTIBLE) {
         shell_annunciators(-1, -1, -1, 1, -1, -1);
+        pending_command = CMD_NONE;
         return 1;
     }
 
@@ -664,295 +671,6 @@ int core_list_programs(char *buf, int bufsize) {
     return count;
 }
 
-static int export_hp42sx(int index, int (*progress_report)(const char *)) {
-    int4 pc = 0;
-    int cmd;
-    arg_struct arg;
-    int saved_prgm = current_prgm;
-    uint4 hp42s_code;
-    unsigned char code_flags, code_name, code_std_1, code_std_2;
-    char cmdbuf[25];
-    int cmdlen;
-    char buf[1000];
-    int buflen = 0;
-    int i;
-    int cancel = 0;
-
-    current_prgm = index;
-    do {
-        get_next_command(&pc, &cmd, &arg, 0);
-        hp42s_code = cmdlist(cmd)->hp42s_code;
-		// add mask to take care of use of high flag nybble
-		code_flags = (hp42s_code >> 24) & 0x0f;
-        code_name = hp42s_code >> 16;
-        code_std_1 = hp42s_code >> 8;
-        code_std_2 = hp42s_code;
-        cmdlen = 0;
-        switch (code_flags) {
-            case 1:
-                /* A command that requires some special attention */
-                if (cmd == CMD_STO) {
-                    if (arg.type == ARGTYPE_NUM && arg.val.num <= 15)
-                        cmdbuf[cmdlen++] = 0x30 + arg.val.num;
-                    else
-                        goto normal;
-                } else if (cmd == CMD_RCL) {
-                    if (arg.type == ARGTYPE_NUM && arg.val.num <= 15)
-                        cmdbuf[cmdlen++] = 0x20 + arg.val.num;
-                    else
-                        goto normal;
-                } else if (cmd == CMD_FIX || cmd == CMD_SCI || cmd == CMD_ENG) {
-                    char byte2;
-                    if (arg.type != ARGTYPE_NUM || arg.val.num <= 9)
-                        goto normal;
-                    cmdbuf[cmdlen++] = (char) 0xF1;
-                    if (arg.val.num == 10) {
-                        switch (cmd) {
-                            case CMD_FIX: byte2 = (char) 0xD5; break;
-                            case CMD_SCI: byte2 = (char) 0xD6; break;
-                            case CMD_ENG: byte2 = (char) 0xD7; break;
-                        }
-                    } else {
-                        switch (cmd) {
-                            case CMD_FIX: byte2 = (char) 0xE5; break;
-                            case CMD_SCI: byte2 = (char) 0xE6; break;
-                            case CMD_ENG: byte2 = (char) 0xE7; break;
-                        }
-                    }
-                    cmdbuf[cmdlen++] = byte2;
-                } else if (cmd == CMD_SIZE) {
-                    cmdbuf[cmdlen++] = (char) 0xF3;
-                    cmdbuf[cmdlen++] = (char) 0xF7;
-                    cmdbuf[cmdlen++] = arg.val.num >> 8;
-                    cmdbuf[cmdlen++] = arg.val.num;
-                } else if (cmd == CMD_LBL) {
-                    if (arg.type == ARGTYPE_NUM) {
-                        if (arg.val.num <= 14)
-                            cmdbuf[cmdlen++] = 0x01 + arg.val.num;
-                        else
-                            goto normal;
-                    } else if (arg.type == ARGTYPE_STR) {
-                        if (progress_report != NULL) {
-                            char s[52];
-                            int sl = hp2ascii(s + 1, arg.val.text, arg.length);
-                            s[0] = s[sl + 1] = '"';
-                            s[sl + 2] = 0;
-                            if (progress_report(s)) {
-                                cancel = 1;
-                                goto done;
-                            }
-                        }
-                        cmdbuf[cmdlen++] = (char) 0xC0;
-                        cmdbuf[cmdlen++] = 0x00;
-                        cmdbuf[cmdlen++] = 0xF1 + arg.length;
-                        cmdbuf[cmdlen++] = 0x00;
-                        for (i = 0; i < arg.length; i++)
-                            cmdbuf[cmdlen++] = arg.val.text[i];
-                    } else
-                        goto normal;
-                } else if (cmd == CMD_INPUT) {
-                    if (arg.type == ARGTYPE_IND_NUM
-                            || arg.type == ARGTYPE_IND_STK)
-                        code_std_2 = 0xEE;
-                    goto normal;
-                } else if (cmd == CMD_XEQ) {
-                    if (arg.type == ARGTYPE_NUM || arg.type == ARGTYPE_LCLBL) {
-                        code_std_1 = 0xE0;
-                        code_std_2 = 0x00;
-                        goto normal;
-                    } else if (arg.type == ARGTYPE_STR) {
-                        cmdbuf[cmdlen++] = 0x1E;
-                        cmdbuf[cmdlen++] = 0xF0 + arg.length;
-                        for (i = 0; i < arg.length; i++)
-                            cmdbuf[cmdlen++] = arg.val.text[i];
-                    } else
-                        goto normal;
-                } else if (cmd == CMD_GTO) {
-                    if (arg.type == ARGTYPE_NUM && arg.val.num <= 14) {
-                        cmdbuf[cmdlen++] = 0xB1 + arg.val.num;
-                        cmdbuf[cmdlen++] = 0x00;
-                    } else if (arg.type == ARGTYPE_NUM
-                                        || arg.type == ARGTYPE_LCLBL) {
-                        code_std_1 = 0xD0;
-                        code_std_2 = 0x00;
-                        goto normal;
-                    } else if (arg.type == ARGTYPE_IND_NUM
-                                        || arg.type == ARGTYPE_IND_STK) {
-                        cmdbuf[cmdlen++] = (char) 0xAE;
-                        if (arg.type == ARGTYPE_IND_NUM)
-                            arg.type = ARGTYPE_NUM;
-                        else
-                            arg.type = ARGTYPE_STK;
-                        goto non_string_suffix;
-                    } else if (arg.type == ARGTYPE_STR) {
-                        cmdbuf[cmdlen++] = 0x1D;
-                        cmdbuf[cmdlen++] = 0xF0 + arg.length;
-                        for (i = 0; i < arg.length; i++)
-                            cmdbuf[cmdlen++] = arg.val.text[i];
-                    } else
-                        goto normal;
-                } else if (cmd == CMD_END) {
-                    if (progress_report != NULL && progress_report("END")) {
-                        cancel = 1;
-                        goto done;
-                    }
-                    cmdbuf[cmdlen++] = (char) 0xC0;
-                    cmdbuf[cmdlen++] = 0x00;
-                    cmdbuf[cmdlen++] = 0x0D;
-                } else if (cmd == CMD_NUMBER) {
-                    char *p = phloat2program(arg.val_d);
-                    char dot = flags.f.decimal_point ? '.' : ',';
-                    char c;
-                    while ((c = *p++) != 0) {
-                        if (c >= '0' && c <= '9')
-                            cmdbuf[cmdlen++] = 0x10 + c - '0';
-                        else if (c == dot)
-                            cmdbuf[cmdlen++] = 0x1A;
-                        else if (c == 24)
-                            cmdbuf[cmdlen++] = 0x1B;
-                        else if (c == '-')
-                            cmdbuf[cmdlen++] = 0x1C;
-                        else
-                            /* Should not happen */
-                            continue;
-                    }
-                    cmdbuf[cmdlen++] = 0x00;
-                } else if (cmd == CMD_STRING) {
-                    cmdbuf[cmdlen++] = 0xF0 + arg.length;
-                    for (i = 0; i < arg.length; i++)
-                        cmdbuf[cmdlen++] = arg.val.text[i];
-                } else if (cmd >= CMD_ASGN01 && cmd <= CMD_ASGN18) {
-                    if (arg.type == ARGTYPE_STR) {
-                        cmdbuf[cmdlen++] = 0xF2 + arg.length;
-                        cmdbuf[cmdlen++] = (char) 0xC0;
-                        for (i = 0; i < arg.length; i++)
-                            cmdbuf[cmdlen++] = arg.val.text[i];
-                    } else {
-                        /* arg.type == ARGTYPE_COMMAND; we don't use that
-                         * any more, but just to be safe (in case anyone ever
-                         * actually used this in a program), we handle it
-                         * anyway.
-                         */
-                        const command_spec *cs = cmdlist(arg.val.cmd);
-                        cmdbuf[cmdlen++] = 0xF2 + cs->name_length;
-                        cmdbuf[cmdlen++] = (char) 0xC0;
-                        for (i = 0; i < cs->name_length; i++)
-                            cmdbuf[cmdlen++] = cs->name[i];
-                    }
-                    cmdbuf[cmdlen++] = cmd - CMD_ASGN01;
-                } else if ((cmd >= CMD_KEY1G && cmd <= CMD_KEY9G) 
-                            || (cmd >= CMD_KEY1X && cmd <= CMD_KEY9X)) {
-                    int keyg = cmd <= CMD_KEY9G;
-                    int keynum = cmd - (keyg ? CMD_KEY1G : CMD_KEY1X) + 1;
-                    if (arg.type == ARGTYPE_STR || arg.type == ARGTYPE_IND_STR){
-                        cmdbuf[cmdlen++] = 0xF2 + arg.length;
-                        cmdbuf[cmdlen++] = keyg ? 0xC3 : 0xC2;
-                        if (arg.type == ARGTYPE_IND_STR)
-                            cmdbuf[cmdlen - 1] += 8;
-                        cmdbuf[cmdlen++] = keynum;
-                        for (i = 0; i < arg.length; i++)
-                            cmdbuf[cmdlen++] = arg.val.text[i];
-                    } else {
-                        cmdbuf[cmdlen++] = (char) 0xF3;
-                        cmdbuf[cmdlen++] = keyg ? 0xE3 : 0xE2;
-                        cmdbuf[cmdlen++] = keynum;
-                        goto non_string_suffix;
-                    }
-                } else if (cmd == CMD_XROM) {
-                    cmdbuf[cmdlen++] = (char) (0xA0 + ((arg.val.num >> 8) & 7));
-                    cmdbuf[cmdlen++] = (char) arg.val.num;
-                } else {
-                    /* Shouldn't happen */
-                    continue;
-                }
-                break;
-            case 0:
-            normal:
-                if (arg.type == ARGTYPE_STR || arg.type == ARGTYPE_IND_STR) {
-                    int i;
-                    cmdbuf[cmdlen++] = 0xF0 + arg.length + 1;
-                    cmdbuf[cmdlen++] = arg.type == ARGTYPE_STR ? code_name
-                                                            : code_name + 8;
-                    for (i = 0; i < arg.length; i++)
-                        cmdbuf[cmdlen++] = arg.val.text[i];
-                } else {
-                    unsigned char suffix;
-                    if (code_std_1 != 0)
-                        cmdbuf[cmdlen++] = code_std_1;
-                    cmdbuf[cmdlen++] = code_std_2;
-
-                    non_string_suffix:
-                    suffix = 0;
-                    switch (arg.type) {
-                        case ARGTYPE_NONE:
-                            goto no_suffix;
-                        case ARGTYPE_IND_NUM:
-                            suffix = 0x80;
-                        case ARGTYPE_NUM:
-                            suffix += arg.val.num;
-                            break;
-                        case ARGTYPE_IND_STK:
-                            suffix = 0x80;
-                        case ARGTYPE_STK:
-                            switch (arg.val.stk) {
-                                case 'X': suffix += 0x73; break;
-                                case 'Y': suffix += 0x72; break;
-                                case 'Z': suffix += 0x71; break;
-                                case 'T': suffix += 0x70; break;
-                                case 'L': suffix += 0x74; break;
-                                default:
-                                    /* Shouldn't happen */
-                                    continue;
-                            }
-                            break;
-                        case ARGTYPE_LCLBL:
-                            if (arg.val.lclbl >= 'A' && arg.val.lclbl <= 'J')
-                                suffix = arg.val.lclbl - 'A' + 0x66;
-                            else if (arg.val.lclbl >= 'a' &&
-                                                        arg.val.lclbl <= 'e')
-                                suffix = arg.val.lclbl - 'a' + 0x7B;
-                            else
-                                /* Shouldn't happen */
-                                continue;
-                            break;
-                        default:
-                            /* Shouldn't happen */
-                            /* Values not handled above are ARGTYPE_NEG_NUM,
-                             * which is converted to ARGTYPE_NUM by
-                             * get_next_command(); ARGTYPE_DOUBLE, which only
-                             * occurs with CMD_NUMBER, which is handled in the
-                             * special-case section, above; ARGTYPE_COMMAND,
-                             * which is handled in the special-case section;
-                             * and ARGTYPE_LBLINDEX, which is converted to
-                             * ARGTYPE_STR before being stored in a program.
-                             */
-                            continue;
-                    }
-                    cmdbuf[cmdlen++] = suffix;
-                    no_suffix:
-                    ;
-                }
-                break;
-            case 2:
-            default:
-                /* Illegal command */
-                continue;
-        }
-        if (buflen + cmdlen > 1000) {
-            if (!shell_write(buf, buflen))
-                goto done;
-            buflen = 0;
-        }
-        for (i = 0; i < cmdlen; i++)
-            buf[buflen++] = cmdbuf[i];
-    } while (cmd != CMD_END && pc < prgms[index].size);
-    if (buflen > 0)
-        shell_write(buf, buflen);
-    done:
-    current_prgm = saved_prgm;
-    return cancel;
-}
-
 /* export using alternate exports
  *
  */
@@ -960,7 +678,7 @@ static int export_hp42s(int index, int (*progress_report)(const char *)) {
     int4 pc = 0;
     int saved_prgm = current_prgm;
     char buf[1000];
-	char cmdbuf[25];
+	char cmdbuf[50];
     int buflen = 0;
 	int cmdlen;
 	int i, done;
@@ -1636,7 +1354,7 @@ static int getbyte(char *buf, int *bufptr, int *buflen, int maxlen) {
 }
 
 void core_import_programs(int (*progress_report)(const char *)) {
-    char buf[120];
+    char buf[150];
     int i, nread;
 	int eof_flag, done_flag;
     int pos = 0;
@@ -1651,12 +1369,12 @@ void core_import_programs(int (*progress_report)(const char *)) {
     flags.f.normal_print = 0;
 	goto_dot_dot();
 	// let's fill the buffer
-	nread = shell_read(buf, 100);
-	eof_flag = (nread != 100) ? 1 : 0;
+	nread = shell_read(buf, 150);
+	eof_flag = (nread != 150) ? 1 : 0;
 	done_flag = 0;
 	while (!done_flag) {
-		core_42ToFree42((unsigned char*)buf, &pos, 30);
-		if (pos > (nread - 20)) {
+		core_42ToFree42((unsigned char*)buf, &pos, 50);
+		if (pos > (nread - 50)) {
 			if (!eof_flag) {
 				for (i=0; pos < nread;) {
 					buf[i++] = buf[pos++];
@@ -1725,22 +1443,22 @@ void core_42ToFree42_alphaGto (unsigned char *buf, int *pt) {
  *
  * take care of len to avoid infinite loop
  */
-#define MAXDIGITSBUF 20
+#define MAXDIGITSBUF 50
 void core_42ToFree42_number (unsigned char *buf, int *pt, int l) {
 	int cmd;
 	arg_struct arg;
 	int i = 0;
-	int str2PhloatErr;
+	int s;
 	char DigitsBuf[MAXDIGITSBUF];
 	cmd = CMD_NUMBER;
 	arg.type = ARGTYPE_DOUBLE;
 	do  {
 		switch (buf[*pt]) {
 			case 0x1a :
-				DigitsBuf[i++] = flags.f.decimal_point ? '.' : ',';
+				DigitsBuf[i++] = '.';
 				break;
 			case 0x1b :
-				DigitsBuf[i++] = 0x18;
+				DigitsBuf[i++] = 'E';
 				break;
 			case 0x1c :
 				DigitsBuf[i++] = '-';
@@ -1754,22 +1472,46 @@ void core_42ToFree42_number (unsigned char *buf, int *pt, int l) {
 		// ignore 0x00 digit separator
 		(*pt)++;
 	}
-	str2PhloatErr = string2phloat(DigitsBuf, i, &arg.val_d);
-	if (str2PhloatErr == 5) {
-		arg.val_d = 0;
+	DigitsBuf[i++] = 0;
+#ifdef BCD_MATH
+	arg.val_d = Phloat(DigitsBuf);
+	s = p_isinf(arg.val_d);
+	if (s > 0) {
+		arg.val_d = POS_HUGE_PHLOAT;
 	}
-	else if (str2PhloatErr == 4) {
-        arg.val_d = NEG_TINY_PHLOAT;
+	else if (s < 0) {
+		arg.val_d = NEG_HUGE_PHLOAT;
 	}
-	else if (str2PhloatErr == 3) {
-	    arg.val_d = POS_TINY_PHLOAT;
+#else
+	BID_UINT128 d;
+	int r, zero;
+	BID_UINT128 z;
+	bid128_from_string(&d, DigitsBuf);
+	bid128_to_binary64(&arg.val_d, &d);
+	if (arg.val_d == 0) {
+		zero = 0;
+		bid128_from_int32(&z, &zero);
+		bid128_quiet_equal(&r, &d, &z);
+		if (!r) {
+			bid128_isSigned(&r, &d);
+			if (r) {
+				arg.val_d = NEG_TINY_PHLOAT;
+			}
+			else {
+				arg.val_d = POS_TINY_PHLOAT;
+			}
+		}
 	}
-	else if (str2PhloatErr == 2) {
-        arg.val_d = NEG_HUGE_PHLOAT;
+	else {
+		s = p_isinf(arg.val_d);
+		if (s > 0) {
+			arg.val_d = POS_HUGE_PHLOAT;
+		}
+		else if (s < 0) {
+			arg.val_d = NEG_HUGE_PHLOAT;
+		}
 	}
-	else if (str2PhloatErr == 1) {
-	    arg.val_d = POS_HUGE_PHLOAT;
-	}
+#endif
 	store_command_after(&pc, cmd, &arg);
 }
 
@@ -2244,7 +1986,7 @@ int core_42ToFree42 (unsigned char *buf, int *pt, int l){
 }
 
 void core_copy(char *buf, int buflen) {
-    int len = vartype2string(reg_x, buf, buflen - 1);
+    int len = vartype2string(reg_x, buf, buflen - 1, MAX_MANT_DIGITS);
     buf[len] = 0;
     if (reg_x->type == TYPE_REAL || reg_x->type == TYPE_COMPLEX) {
         /* Convert small-caps 'E' to regular 'e' */
@@ -2264,7 +2006,7 @@ static bool is_number_char(char c) {
 static bool parse_phloat(const char *p, int len, phloat *res) {
     // We can't pass the string on to string2phloat() unchanged, because
     // that function is picky: it does not allow '+' signs, and it does
-    // not allow the mantissa to be more than 12 digits long (including
+    // not allow the mantissa to be more than 34 or 16 digits long (including
     // leading zeroes). So, we massage the string a bit to make it
     // comply with those restrictions.
     char buf[100];
@@ -2281,7 +2023,7 @@ static bool parse_phloat(const char *p, int len, phloat *res) {
             in_mant = false;
             buf[i++] = 24;
         } else if (c >= '0' && c <= '9') {
-            if (!in_mant || mant_digits++ < 12)
+            if (!in_mant || mant_digits++ < MAX_MANT_DIGITS)
                 buf[i++] = c;
         } else
             buf[i++] = c;

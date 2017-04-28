@@ -1,6 +1,7 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
+ * Copyright (C) 2015-2016  Jean-Christophe Hessemann, hpil extensions
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -30,26 +31,6 @@
 #include "hpil_mass.h"
 #include "hpil_printer.h"
 
-#ifndef COPAN
-#define docmd_openf docmd_xrom
-#define docmd_closef docmd_xrom
-#define docmd_readp docmd_xrom
-#define docmd_writp docmd_xrom
-#define docmd_getxy docmd_xrom
-#define docmd_putxy docmd_xrom
-#define docmd_clrp docmd_xrom
-#define docmd_clrd docmd_xrom
-#define docmd_appd docmd_xrom
-#define docmd_getn docmd_xrom
-#define docmd_putn docmd_xrom
-#define docmd_getz docmd_xrom
-#define docmd_putz docmd_xrom
-#define docmd_delp docmd_xrom
-#endif
-
-#ifndef BIGSTACK
-#define docmd_drop docmd_xrom
-#endif
 
 #if !defined(ANDROID) && !defined(IPHONE)
 #define docmd_accel docmd_xrom
@@ -57,9 +38,6 @@
 #define docmd_heading docmd_xrom
 #endif
 
-/* PalmOS: even though this array is declared "const", it ends up in the
- * globals area. Is this because of the function pointers?
- */
 
 static const command_spec cmd_array[] =
 {
@@ -406,24 +384,24 @@ static const command_spec cmd_array[] =
      * to make sure the display reflects the new setting.
      */
 
-    /* Underhill's COPAN */
-    { /* OPENF */       "OPENF",                5, docmd_openf,       0x0000a7c1, ARG_NONE,  FLAG_NONE },
-    { /* CLOSF */       "CLOSF",                5, docmd_closef,      0x0000a7c2, ARG_NONE,  FLAG_NONE },
-    { /* READP */       "READP",                5, docmd_readp,       0x0000a7c3, ARG_NONE,  FLAG_NONE },
-    { /* WRITP */       "WRITP",                5, docmd_writp,       0x0000a7c4, ARG_NONE,  FLAG_NONE },
-    { /* GETXY */       "GETXY",                5, docmd_getxy,       0x0000a7c5, ARG_NONE,  FLAG_NONE },
-    { /* PUTXY */       "PUTXY",                5, docmd_putxy,       0x0000a7c6, ARG_NONE,  FLAG_NONE },
-    { /* CLRP */        "CLRP",                 4, docmd_clrp,        0x0000a7c7, ARG_NONE,  FLAG_NONE },
-    { /* CLRD */        "CLRD",                 4, docmd_clrd,        0x0000a7c8, ARG_NONE,  FLAG_NONE },
-    { /* APPD */        "APPD",                 4, docmd_appd,        0x0000a7c9, ARG_NONE,  FLAG_NONE },
-    { /* GETN */        "GETN",                 4, docmd_getn,        0x0000a7ca, ARG_NONE,  FLAG_NONE },
-    { /* PUTN */        "PUTN",                 4, docmd_putn,        0x0000a7cb, ARG_NONE,  FLAG_NONE },
-    { /* GETZ */        "GETZ",                 4, docmd_getz,        0x0000a7cc, ARG_NONE,  FLAG_NONE },
-    { /* PUTZ */        "PUTZ",                 4, docmd_putz,        0x0000a7cd, ARG_NONE,  FLAG_NONE },
-    { /* DELP */        "DELP",                 4, docmd_delp,        0x0000a7ce, ARG_NONE,  FLAG_NONE },
+    /* Underhill's COPAN (Obsolete) */
+    { /* OPENF */       "OPENF",                5, docmd_xrom,       0x0000a7c1, ARG_NONE,  FLAG_NONE },
+    { /* CLOSF */       "CLOSF",                5, docmd_xrom,      0x0000a7c2, ARG_NONE,  FLAG_NONE },
+    { /* READP */       "READK",                5, docmd_xrom,       0x0000a7c3, ARG_NONE,  FLAG_NONE },
+    { /* WRITP */       "WRITP",                5, docmd_xrom,       0x0000a7c4, ARG_NONE,  FLAG_NONE },
+    { /* GETXY */       "GETXY",                5, docmd_xrom,       0x0000a7c5, ARG_NONE,  FLAG_NONE },
+    { /* PUTXY */       "PUTXY",                5, docmd_xrom,       0x0000a7c6, ARG_NONE,  FLAG_NONE },
+    { /* CLRP */        "CLRP",                 4, docmd_xrom,        0x0000a7c7, ARG_NONE,  FLAG_NONE },
+    { /* CLRD */        "CLRD",                 4, docmd_xrom,        0x0000a7c8, ARG_NONE,  FLAG_NONE },
+    { /* APPD */        "APPD",                 4, docmd_xrom,        0x0000a7c9, ARG_NONE,  FLAG_NONE },
+    { /* GETN */        "GETN",                 4, docmd_xrom,        0x0000a7ca, ARG_NONE,  FLAG_NONE },
+    { /* PUTN */        "PUTN",                 4, docmd_xrom,        0x0000a7cb, ARG_NONE,  FLAG_NONE },
+    { /* GETZ */        "GETZ",                 4, docmd_xrom,        0x0000a7cc, ARG_NONE,  FLAG_NONE },
+    { /* PUTZ */        "PUTZ",                 4, docmd_xrom,        0x0000a7cd, ARG_NONE,  FLAG_NONE },
+    { /* DELP */        "DELP",                 4, docmd_xrom,        0x0000a7ce, ARG_NONE,  FLAG_NONE },
 
-    /* Byron Foster's DROP for Bigstack */
-    { /* DROP */        "DROP",                 4, docmd_drop,        0x0000a271, ARG_NONE,  FLAG_NONE },
+    /* Byron Foster's DROP for Bigstack (Obsolete) */
+    { /* DROP */        "DROP",                 4, docmd_xrom,        0x0000a271, ARG_NONE,  FLAG_NONE },
 
     /* Accelerometer, GPS, and compass support */
     { /* ACCEL */       "ACCEL",                5, docmd_accel,       0x0000a7cf, ARG_NONE,  FLAG_NONE },
@@ -487,7 +465,7 @@ static const command_spec cmd_array[] =
     { /* DIR */         "DIR",	 				3, docmd_dir,         0x0000a702, ARG_NONE,  FLAG_NONE },
 	{ /* NEWM */		"NEWM",					4, docmd_newm,		  0x0000a703, ARG_COUNT, FLAG_NO_PRGM },
     { /* PURGE */       "PURG\305",	 			5, docmd_purge,       0x0000a704, ARG_NONE,  FLAG_NONE },
-	{ /* READP */		"R\305\301DP",			5, docmd_readp2,	  0x0000a707, ARG_NONE,  FLAG_NONE },
+	{ /* READP */		"R\305\301DP",			5, docmd_readp,	  	  0x0000a707, ARG_NONE,  FLAG_NONE },
 	{ /* READR */		"R\305\301DR",			5, docmd_readr,		  0x0000a708, ARG_NONE,  FLAG_NONE },
 	{ /* RENAME */		"RENAME",				6, docmd_rename,	  0x0000a70c, ARG_NONE,  FLAG_NONE },
 	{ /* SEC */			"SEC",					3, docmd_sec,		  0x0000a70d, ARG_NONE,  FLAG_NONE },
