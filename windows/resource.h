@@ -28,6 +28,7 @@
 #define IDC_SINGLEINSTANCE                      1015
 #define IDC_WEBSITELINK                         1017
 #define IDC_FORUMLINK                           1018
+#define IDC_XWEBSITELINK                        1019
 #define IDM_SHOWPRINTOUT                        32771
 #define IDM_CLEARPRINTOUT                       32772
 #define IDM_PREFERENCES                         32773

@@ -62,7 +62,7 @@ FONT 8, "System"
     LTEXT           "http://groups.google.com/group/free42discuss", IDC_FORUMLINK, 31, 37, 191, 8, SS_LEFT | SS_NOTIFY, WS_EX_LEFT
     LTEXT           "HP-IL eXtensions", IDC_STATIC, 31, 50, 191, 8, SS_LEFT, WS_EX_LEFT
     LTEXT           "© 2015-2017 J.C. Hessemann", IDC_STATIC, 31, 63, 191, 8, SS_LEFT, WS_EX_LEFT
-    LTEXT           "https://github.com/jch42/Free42x/tree/HP-IL-Injection", IDC_WEBSITELINK, 31, 73, 191, 8, SS_LEFT | SS_NOTIFY, WS_EX_LEFT
+    LTEXT           "https://github.com/jch42/Free42x/tree/HP-IL-Injection", IDC_XWEBSITELINK, 31, 73, 191, 8, SS_LEFT | SS_NOTIFY, WS_EX_LEFT
     DEFPUSHBUTTON   "OK", IDOK, 189, 6, 30, 11, WS_GROUP, WS_EX_LEFT
 }
 
