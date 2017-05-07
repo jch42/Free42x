@@ -134,8 +134,6 @@ static void gif_seeker(int pos) {
 void shell_blitter(const char *bits, int bytesperline, int x, int y,
 			     int width, int height)
 {
-    char buf[64];
-
     gif_file = fopen("display.gif", "w");
     shell_start_gif(gif_writer, 131, 16);
     shell_spool_gif(bits, bytesperline, 0, 0, 131, 16, gif_writer);
@@ -145,9 +143,10 @@ void shell_blitter(const char *bits, int bytesperline, int x, int y,
     printf("d");
     flush();
 
-    core_copy(buf, sizeof(buf));
+    char *buf = core_copy();
     printf("x%s", buf);
     flush();
+    free(buf);
 }
 
 void shell_beeper(int frequency, int duration)
@@ -519,7 +518,7 @@ sighand(int)
 int
 main(int argc, char *argv[])
 {
-    char cmd[256];
+    char cmd[65536];
     unsigned char *macro;
     int keyno, ctrl, alt, shift;
     int repeat;
@@ -622,7 +621,15 @@ main(int argc, char *argv[])
 	    done:
 	    break;
 	case 'P':
-	    core_paste(cmd + 1);
+            char c;
+            char *p;
+            for (p = cmd + 1; (c = *p) != 0; p++) {
+                if (c == 31)
+                    *p = 13;
+                else if (c == 30)
+                    *p = 10;
+            }
+            core_paste(cmd + 1);
 	    redisplay();
 	    break;
 	case 'e':

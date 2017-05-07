@@ -284,9 +284,12 @@ public class Free42Activity extends Activity {
     protected void onPause() {
         end_core_keydown();
         // Write state file
+        File filesDir = getFilesDir();
+        File stateFile = null;
         try {
-            stateFileOutputStream = openFileOutput("state.new", Context.MODE_PRIVATE);
-        } catch (FileNotFoundException e) {
+            stateFile = File.createTempFile("state.", ".new", filesDir);
+            stateFileOutputStream = new FileOutputStream(stateFile, true);
+        } catch (IOException e) {
             stateFileOutputStream = null;
         }
         if (stateFileOutputStream != null) {
@@ -298,13 +301,12 @@ public class Free42Activity extends Activity {
                 stateFileOutputStream.close();
             } catch (IOException e) {}
             // Writing state file succeeded; rename state.new to state
-            File filesDir = getFilesDir();
-            new File(filesDir, "state.new").renameTo(new File(filesDir, "state"));
+            stateFile.renameTo(new File(filesDir, "state"));
             stateFileOutputStream = null;
         } else {
             // Writing state file failed; delete state.new, if it even exists
-            File filesDir = getFilesDir();
-            new File(filesDir, "state.new").delete();
+            if (stateFile != null)
+                stateFile.delete();
         }
         printView.dump();
         if (printTxtStream != null) {
@@ -458,10 +460,8 @@ public class Free42Activity extends Activity {
     
     private void doPaste() {
         android.text.ClipboardManager clip = (android.text.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        if (clip.hasText()) {
+        if (clip.hasText())
             core_paste(clip.getText().toString());
-            redisplay();
-        }
     }
     
     private void doFlipCalcPrintout() {
