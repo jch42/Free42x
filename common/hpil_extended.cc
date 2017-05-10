@@ -21,7 +21,7 @@
  */
 
 //#include <stdio.h>
-//#include <stdlib.h>
+#include <stdlib.h>
 #include "core_commands2.h"
 #include "core_display.h"
 #include "core_globals.h"
@@ -31,6 +31,7 @@
 #include "hpil_common.h"
 #include "hpil_controller.h"
 #include "hpil_extended.h"
+#include "string.h"
 
 #define MethodNone			0x01
 #define MethodChar			0x02

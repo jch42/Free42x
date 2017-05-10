@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -360,20 +360,18 @@ static CalcView *calcView = nil;
 }
 
 - (void) doCopy {
-    char buf[100];
-    core_copy(buf, 100);
-    NSString *txt = [NSString stringWithCString:buf encoding:NSUTF8StringEncoding];
+    char *buf = core_copy();
+    NSString *txt = [NSString stringWithUTF8String:buf];
     UIPasteboard *pb = [UIPasteboard generalPasteboard];
     [pb setString:txt];
+    free(buf);
 }
 
 - (void) doPaste {
     UIPasteboard *pb = [UIPasteboard generalPasteboard];
     NSString *txt = [pb string];
-    char buf[100];
-    [txt getCString:buf maxLength:100 encoding:NSUTF8StringEncoding];
+    const char *buf = [txt UTF8String];
     core_paste(buf);
-    redisplay();
 }
 
 - (void) startRunner {

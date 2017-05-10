@@ -1397,27 +1397,24 @@ static void appendSuffix(char *path, char *suffix) {
 }
 
 static void copyCB() {
-    char buf[100];
-    core_copy(buf, 100);
+    char *buf = core_copy();
     GtkClipboard *clip = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
     gtk_clipboard_set_text(clip, buf, -1);
     clip = gtk_clipboard_get(GDK_SELECTION_PRIMARY);
     gtk_clipboard_set_text(clip, buf, -1);
+    free(buf);
 }
 
 static void paste2(GtkClipboard *clip, const gchar *text, gpointer cd) {
     if (text != NULL) {
         core_paste(text);
         redisplay();
+        // GTK will free the text once the callback returns.
     }
 }
 
 static void pasteCB() {
-#ifdef GDK_WINDOWING_X11
-    GtkClipboard *clip = gtk_clipboard_get(GDK_SELECTION_PRIMARY);
-#else
     GtkClipboard *clip = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
-#endif
     gtk_clipboard_request_text(clip, paste2, NULL);
 }
 
@@ -1466,7 +1463,7 @@ static void aboutCB() {
         GtkWidget *version = gtk_label_new("Free42 " VERSION);
         gtk_misc_set_alignment(GTK_MISC(version), 0, 0);
         gtk_box_pack_start(GTK_BOX(box2), version, FALSE, FALSE, 10);
-        GtkWidget *author = gtk_label_new("(C) 2004-2016 Thomas Okken");
+        GtkWidget *author = gtk_label_new("(C) 2004-2017 Thomas Okken");
         gtk_misc_set_alignment(GTK_MISC(author), 0, 0);
         gtk_box_pack_start(GTK_BOX(box2), author, FALSE, FALSE, 0);
         GtkWidget *websitelink = gtk_link_button_new("http://thomasokken.com/free42/");

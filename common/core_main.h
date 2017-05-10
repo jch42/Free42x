@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -316,8 +316,9 @@ int core_42ToFree42 (unsigned char *, int *, int );
  *
  * Returns a string representation of the contents of the X register.
  * Used by the shell to implement the Copy command.
+ * The caller should free the returned text using free(3).
  */
-void core_copy(char *buf, int buflen);
+char *core_copy();
 
 /* core_paste()
  *

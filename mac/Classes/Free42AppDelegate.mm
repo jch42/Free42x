@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2017  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -378,7 +378,7 @@ static bool is_file(const char *name);
 - (IBAction) showAbout:(id)sender {
     const char *version = [Free42AppDelegate getVersion];
     [aboutVersion setStringValue:[NSString stringWithFormat:@"Free42 %s", version]];
-    [aboutCopyright setStringValue:@"© 2004-2016 Thomas Okken"];
+    [aboutCopyright setStringValue:@"© 2004-2017 Thomas Okken"];
     [NSApp runModalForWindow:aboutWindow];
 }
 
@@ -536,10 +536,10 @@ static bool is_file(const char *name);
     NSPasteboard *pb = [NSPasteboard generalPasteboard];
     NSArray *types = [NSArray arrayWithObjects: NSStringPboardType, nil];
     [pb declareTypes:types owner:self];
-    char buf[100];
-    core_copy(buf, 100);
-    NSString *txt = [NSString stringWithCString:buf encoding:NSUTF8StringEncoding];
+    char *buf = core_copy();
+    NSString *txt = [NSString stringWithUTF8String:buf];
     [pb setString:txt forType:NSStringPboardType];
+    free(buf);
 }
 
 - (IBAction) doPaste:(id)sender {
@@ -548,10 +548,8 @@ static bool is_file(const char *name);
     NSString *bestType = [pb availableTypeFromArray:types];
     if (bestType != nil) {
         NSString *txt = [pb stringForType:NSStringPboardType];
-        char buf[100];
-        [txt getCString:buf maxLength:100 encoding:NSUTF8StringEncoding];
+        const char *buf = [txt UTF8String];
         core_paste(buf);
-        redisplay();
     }
 }
 

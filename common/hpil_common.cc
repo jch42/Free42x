@@ -15,6 +15,8 @@
  * along with this program// if not, see http://www.gnu.org/licenses/.
  *****************************************************************************/
 
+#include <stdio.h>
+
 #include "core_display.h"
 #include "core_globals.h"
 #include "core_helpers.h"
@@ -22,7 +24,7 @@
 #include "hpil_common.h"
 #include "hpil_controller.h"
 #include "shell.h"
-#include <stdio.h>
+#include "string.h"
 
 HPIL_Controller hpil_core;
 HpilXController hpilXCore;
