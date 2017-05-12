@@ -209,14 +209,11 @@ public class Free42Activity extends Activity {
             stateFileInputStream = openFileInput(stateFile);
         } catch (FileNotFoundException e) {
         	try {
-                stateFile = "state";
-                stateFileInputStream = openFileInput(stateFile);    		
+                stateFileInputStream = openFileInput("state");    		
         	} catch (FileNotFoundException f) {
         		stateFileInputStream = null;
         	}
         }
-    	// file opened, set filename for write time
-        stateFile = "statex";
 
         if (stateFileInputStream != null) {
             if (read_shell_state(version))
@@ -352,10 +349,10 @@ public class Free42Activity extends Activity {
         }
         // Write state file
         File filesDir = getFilesDir();
-        File stateFile = null;
+        File tempStateFile = null;
         try {
-            stateFile = File.createTempFile("state.", ".new", filesDir);
-            stateFileOutputStream = new FileOutputStream(stateFile, true);
+            tempStateFile = File.createTempFile(stateFile, ".new", filesDir);
+            stateFileOutputStream = new FileOutputStream(tempStateFile, true);
         } catch (IOException e) {
             stateFileOutputStream = null;
         }
@@ -368,12 +365,12 @@ public class Free42Activity extends Activity {
                 stateFileOutputStream.close();
             } catch (IOException e) {}
             // Writing state file succeeded; rename state.new to state
-            stateFile.renameTo(new File(filesDir, "state"));
+            tempStateFile.renameTo(new File(filesDir, stateFile));
             stateFileOutputStream = null;
         } else {
             // Writing state file failed; delete state.new, if it even exists
-            if (stateFile != null)
-                stateFile.delete();
+            if (tempStateFile != null)
+                tempStateFile.delete();
         }
         printView.dump();
         if (printTxtStream != null) {
