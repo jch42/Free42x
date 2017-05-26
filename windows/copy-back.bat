@@ -54,6 +54,8 @@ copy hpil_mass.cpp ..\common\hpil_mass.cc
 copy hpil_mass.h ..\common
 copy hpil_printer.cpp ..\common\hpil_printer.cc
 copy hpil_printer.h ..\common
+copy hpil_plotter.cpp ..\common\hpil_plotter.cc
+copy hpil_plotter.h ..\common
 copy shell.h ..\common
 copy shell_loadimage.cpp ..\common\shell_loadimage.cc
 copy shell_loadimage.h ..\common

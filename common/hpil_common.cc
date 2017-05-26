@@ -88,7 +88,7 @@ void hpil_start(void) {
  *
  */
 void hpil_init(bool modeEnabled, bool modeIP, bool modePIL_Box) {
-	int err;
+	int err = ERR_BROKEN_LOOP;
 	hpil_settings.modeEnabled = modeEnabled;
 	hpil_settings.modeIP = modeIP;
 	hpil_settings.modePIL_Box = modePIL_Box;
@@ -549,8 +549,7 @@ int mappable_x_hpil(int max, int *cmd) {
 	else {
         return ERR_INVALID_TYPE;
 	}
-	*cmd &= ~(uint16_t) max;
-	*cmd |= (uint16_t) arg;
+	*cmd = (uint16_t) arg;
     return ERR_NONE;
 }
 

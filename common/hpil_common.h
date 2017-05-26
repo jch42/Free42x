@@ -37,6 +37,7 @@ typedef struct {
 	int selected;					// selected device
 	int print;						// first print / display device in autoio mode
 	int disk;						// first drive in autoio mode
+	int plotter;					// first plotter in autoio mode
 	int prtAid;						// aid of printer
 	int dskAid;						// aid of disk
 	bool modeEnabled;				// hpil enabled...

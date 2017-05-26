@@ -448,8 +448,9 @@
 #define CMD_OUTAE		402
 #define CMD_OUTAN		403
 #define CMD_OUTXB		404
+#define CMD_PINIT		405
 /* end of commands */
-#define CMD_SENTINEL    405
+#define CMD_SENTINEL    406
 
 /* command_spec.argtype */
 

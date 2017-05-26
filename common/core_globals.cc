@@ -86,7 +86,9 @@ error_spec errors[] = {
 	{ /* TRANSMIT ERROR */		   "Transmit error",		  14 },
 	{ /* BAD CRC */				   "CRC don't match",		  15 },
 	{ /* NO PRINTER */			   "No printer",			  10 },
-	{ /* PRINTER ERROR */		   "Printer error",			  13 }
+	{ /* PRINTER ERROR */		   "Printer error",			  13 },
+	{ /* NO PLOTTER */			   "No plotter",			  10 },
+	{ /* PLOTTER ERROR */		   "Plotter error",			  13 }
 };
 
 

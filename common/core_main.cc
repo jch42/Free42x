@@ -1551,7 +1551,7 @@ void core_42ToFree42_suffix (unsigned char suffix, arg_struct *arg) {
 
 /* Decode xrom (two bytes) instructions
  *
- * search in cmd array
+ * linear search in cmd array
  */
 void core_42toFree42_xrom (unsigned char *buf, int *pt, int *cmd) {
 	int i;
@@ -1565,9 +1565,6 @@ void core_42toFree42_xrom (unsigned char *buf, int *pt, int *cmd) {
 		}
 		i++;
 	} while (i < CMD_SENTINEL);
-	if (i != *cmd) {
-		i++;
-	}
 }
 
 /* Global labels / end
@@ -1847,6 +1844,11 @@ void core_42ToFree42_2Byte (unsigned char *buf, int *pt) {
 	else if ((buf[*pt] >= 0xa0) && (buf[*pt] <= 0xa7)) {
 		cmd = CMD_XROM;
 		core_42toFree42_xrom(buf, pt, &cmd);
+		// take care of unknown XROM numbers
+		if (cmd == CMD_XROM) {
+			arg.type = ARGTYPE_NUM;
+			arg.val.num = (uint4)((buf[*pt] << 8) + buf[(*pt)+1]);
+		}
 	}
 	else {
 		i = 0;
@@ -2187,7 +2189,7 @@ static int scan_number(const char *buf, int len, int pos) {
     return len;
 }
 
-static bool parse_phloat(const char *p, int len, phloat *res) {
+bool parse_phloat(const char *p, int len, phloat *res) {
     // We can't pass the string on to string2phloat() unchanged, because
     // that function is picky: it does not allow '+' signs, and it does
     // not allow the mantissa to be more than 34 or 16 digits long (including

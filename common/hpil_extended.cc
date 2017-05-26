@@ -72,48 +72,6 @@ static int hpil_clrloop_completion(int error);
 static int hpil_inx_completion(int error);
 static int hpil_outx_completion(int error);
 
-
-static bool parse_phloat(const char *p, int len, phloat *res) {
-    // We can't pass the string on to string2phloat() unchanged, because
-    // that function is picky: it does not allow '+' signs, and it does
-    // not allow the mantissa to be more than 12 digits long (including
-    // leading zeroes). So, we massage the string a bit to make it
-    // comply with those restrictions.
-    char buf[100];
-    bool in_mant = true;
-    int mant_digits = 0;
-    int i = 0, j = 0;
-    while (i < 100 && j < len) {
-        char c = p[j++];
-        if (c == 0)
-            break;
-        if (c == '+')
-            continue;
-        else if (c == 'e' || c == 'E' || c == 24) {
-            in_mant = false;
-            buf[i++] = 24;
-        } else if (c >= '0' && c <= '9') {
-            if (!in_mant || mant_digits++ < 12)
-                buf[i++] = c;
-        } else
-            buf[i++] = c;
-    }
-    int err = string2phloat(buf, i, res);
-    if (err == 0)
-        return true;
-    else if (err == 1) {
-        *res = POS_HUGE_PHLOAT;
-        return true;
-    } else if (err == 2) {
-        *res = NEG_HUGE_PHLOAT;
-        return true;
-    } else if (err == 3 || err == 4) {
-        *res = 0;
-        return true;
-    } else
-        return false;
-}
-
 /* alpha_trim_left
  *
  * remove upto n chars for alpha

@@ -19,6 +19,7 @@
 #define CORE_MAIN_H 1
 
 #include "free42.h"
+#include "core_phloat.h"
 
 
 /**********************************/
@@ -311,6 +312,13 @@ void core_import_programs(int (*progress_report)(const char *));
  * mix between T.Duell & T.Okken methods
  */
 int core_42ToFree42 (unsigned char *, int *, int );
+
+/* parse_phloat
+ *
+ * convert a string to a phloat
+ * made available for other modules
+ */
+bool parse_phloat(const char *, int ,phloat *);
 
 /* core_copy()
  *

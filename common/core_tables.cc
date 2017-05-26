@@ -30,6 +30,7 @@
 #include "hpil_extended.h"
 #include "hpil_mass.h"
 #include "hpil_printer.h"
+#include "hpil_plotter.h"
 
 
 #if !defined(ANDROID) && !defined(IPHONE)
@@ -488,7 +489,10 @@ static const command_spec cmd_array[] =
     { /* OUTACL */      "OUT\301CL",			6, docmd_outacl,      0x0000a5e4, ARG_NONE,  FLAG_NONE },
     { /* OUTAE */       "OUT\301E",				5, docmd_outae,       0x0000a5e5, ARG_NONE,  FLAG_NONE },
     { /* OUTAN */       "OUT\301N",				5, docmd_outan,       0x0000a5e6, ARG_NONE,  FLAG_NONE },
-    { /* OUTXB */       "OUTXB",			    5, docmd_outxb,       0x0000a5e7, ARG_NONE,  FLAG_NONE }
+    { /* OUTXB */       "OUTXB",			    5, docmd_outxb,       0x0000a5e7, ARG_NONE,  FLAG_NONE },
+
+	/* hpil plotter module */
+    { /* PINIT */       "PINIT",			    5, docmd_pinit,       0x0000a459, ARG_NONE,  FLAG_NONE }
 
 };
 

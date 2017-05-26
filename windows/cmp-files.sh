@@ -55,6 +55,8 @@ cmp hpil_mass.cpp ../common/hpil_mass.cc
 cmp hpil_mass.h ../common/hpil_mass.h
 cmp hpil_printer.cpp ../common/hpil_printer.cc
 cmp hpil_printer.h ../common/hpil_printer.h
+cmp hpil_plotter.cpp ../common/hpil_plotter.cc
+cmp hpil_plotter.h ../common/hpil_plotter.h
 cmp shell.h ../common/shell.h
 cmp shell_loadimage.cpp ../common/shell_loadimage.cc
 cmp shell_loadimage.h ../common/shell_loadimage.h
