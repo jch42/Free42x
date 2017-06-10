@@ -88,7 +88,8 @@ error_spec errors[] = {
 	{ /* NO PRINTER */			   "No printer",			  10 },
 	{ /* PRINTER ERROR */		   "Printer error",			  13 },
 	{ /* NO PLOTTER */			   "No plotter",			  10 },
-	{ /* PLOTTER ERROR */		   "Plotter error",			  13 }
+	{ /* PLOTTER ERROR */		   "Plotter error",			  13 },
+	{ /* PLOTTER DATA ERROR */	   "Plotter data error",	  18 }
 };
 
 

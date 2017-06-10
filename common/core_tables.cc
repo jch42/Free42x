@@ -492,7 +492,10 @@ static const command_spec cmd_array[] =
     { /* OUTXB */       "OUTXB",			    5, docmd_outxb,       0x0000a5e7, ARG_NONE,  FLAG_NONE },
 
 	/* hpil plotter module */
-    { /* PINIT */       "PINIT",			    5, docmd_pinit,       0x0000a459, ARG_NONE,  FLAG_NONE }
+    { /* PINIT */       "PINIT",			    5, docmd_pinit,       0x0000a459, ARG_NONE,  FLAG_NONE },
+    { /* SCALE */       "SCALE",			    5, docmd_scale,       0x0000a45e, ARG_NONE,  FLAG_NONE },
+    { /* PRCL */        "PRCL",					5, docmd_prcl,        0x0000a483, ARG_NONE,  FLAG_NONE }
+
 
 };
 

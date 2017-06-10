@@ -1482,7 +1482,7 @@ static extension_struct extensions[] = {
     { CMD_HEADING, CMD_HEADING, &core_settings.enable_ext_heading  },
     { CMD_ADATE,   CMD_SWPT,    &core_settings.enable_ext_time     },
     { CMD_FPTEST,  CMD_FPTEST,  &core_settings.enable_ext_fptest   },
-    { CMD_IFC,     CMD_PINIT,   &core_settings.enable_ext_hpil     },
+    { CMD_IFC,     CMD_PRCL,   &core_settings.enable_ext_hpil     },
     { CMD_NULL,    CMD_NULL,    NULL                               }
 };
 

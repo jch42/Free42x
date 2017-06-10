@@ -107,8 +107,37 @@ int docmd_pinit(arg_struct *arg) {
 	return ERR_INTERRUPTIBLE;
 }
 
+int docmd_scale(arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	return ERR_NONE;
+}
+
+int docmd_prcl(arg_struct *arg) {
+	int err, i;
+	vartype *v;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	err = mappable_x_hpil(25,&i);
+	if (err != ERR_NONE) {
+		return err;
+	}
+	v = new_real(BR[i]);
+	if (v == NULL) {
+	    return ERR_INSUFFICIENT_MEMORY;
+	}
+	recall_result(v);
+	return ERR_NONE;
+}
+
 int hpil_pinit_completion(int error) {
 	int i;
+	phloat dx, dy, ratio;
 	if (error == ERR_NONE) {
 		error = ERR_INTERRUPTIBLE;
 		switch (hpil_step) {
@@ -129,14 +158,47 @@ int hpil_pinit_completion(int error) {
 				error = call_ilCompletion(hpil_plotterSendGet_sub);
 				break;
 			case 2 :		// Pinit - first stage process P1,P2, second stage get error status send \nOE;
+				// graphics limits in APU
 				i = hpil_parse((char*)hpilXCore.buf, hpilXCore.bufPtr, &P1_x);
 				i += hpil_parse((char*)&hpilXCore.buf[i], hpilXCore.bufPtr - i, &P1_y);
 				i += hpil_parse((char*)&hpilXCore.buf[i], hpilXCore.bufPtr - i, &P2_x);
 				i += hpil_parse((char*)&hpilXCore.buf[i], hpilXCore.bufPtr - i, &P2_y);
+				// plot bounds in APU
 				x1 = P1_x;
 				y1 = P1_y;
 				x2 = P2_x;
 				y2 = P2_y;
+				// Calculate GU scaling factors (GU > APU)
+				Factor2_x = P1_x;
+				Factor2_y = P1_y;
+				dx = P2_x - P1_x;
+				dy = P2_y - P1_y;
+				if ((dx == 0) || (dy == 0)) {
+					error == ERR_PLOTTER_DATA_ERR;
+				}
+				else {
+					ratio = dx / dy;
+					if (ratio < 0) {
+						ratio = -ratio;
+					}
+					ratio = floor(ratio * 10000 + 0.5) / 10000;
+					if (ratio > 1) {
+						// y is the shortest axis, set yscale for 100 units
+						Factor1_y = dy / 100;
+						Factor1_x = 100 / ratio;
+					}
+					else {
+						// x is the shortest axis, set xscale for 100 units 
+						Factor1_y = 100 / ratio;
+						Factor1_x = dx /100;
+					}
+				}
+				// Set UU scaling factors (GU > APU)
+				Factor1_x_prime = Factor1_x;
+				Factor2_x_prime	= Factor2_x;
+				Factor1_y_prime	= Factor1_y;
+				Factor2_y_prime	= Factor2_y;
+				// Get plotter status
 				strncpy((char*)hpilXCore.buf, "\nOE;", 5);
 				hpilXCore.bufPtr = 0;
 				hpilXCore.bufSize = 5;
