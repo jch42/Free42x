@@ -493,8 +493,9 @@ static const command_spec cmd_array[] =
 
 	/* hpil plotter module */
     { /* PINIT */       "PINIT",			    5, docmd_pinit,       0x0000a459, ARG_NONE,  FLAG_NONE },
+    { /* RATIO */       "RATIO",			    5, docmd_ratio,       0x0000a45c, ARG_NONE,  FLAG_NONE },
     { /* SCALE */       "SCALE",			    5, docmd_scale,       0x0000a45e, ARG_NONE,  FLAG_NONE },
-    { /* PRCL */        "PRCL",					5, docmd_prcl,        0x0000a483, ARG_NONE,  FLAG_NONE }
+    { /* PRCL */        "PRCL",					4, docmd_prcl,        0x0000a483, ARG_NONE,  FLAG_NONE }
 
 
 };

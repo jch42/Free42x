@@ -107,11 +107,58 @@ int docmd_pinit(arg_struct *arg) {
 	return ERR_INTERRUPTIBLE;
 }
 
-int docmd_scale(arg_struct *arg) {
+int docmd_ratio(arg_struct *arg) {
 	int err;
+	phloat dx, dy, ratio;
+	vartype *v;
 	err = hpil_check();
 	if (err != ERR_NONE) {
 		return err;
+	}
+	dx = P2_x - P1_x;
+	dy = P2_y - P1_y;
+	if ((dx == 0) || (dy == 0)) {
+		err = ERR_PLOTTER_DATA_ERR;
+	}
+	else {
+		ratio = dx / dy;
+		if (ratio < 0) {
+			ratio = -ratio;
+		}
+		ratio = floor(ratio * 10000) / 10000;
+	}
+	v = new_real(ratio);
+	if (v == NULL) {
+	    return ERR_INSUFFICIENT_MEMORY;
+	}
+	recall_result(v);
+	return ERR_NONE;
+}
+
+int docmd_scale(arg_struct *arg) {
+	int err;
+	phloat dx, dy;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING) || (reg_z->type == TYPE_STRING) || (reg_t->type == TYPE_STRING)) {
+		return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL) && (reg_z->type == TYPE_REAL) && (reg_t->type == TYPE_REAL)) {
+		dx = ((vartype_real *)reg_z)->x - ((vartype_real *)reg_t)->x;
+		dy = ((vartype_real *)reg_x)->x - ((vartype_real *)reg_y)->x;
+		if ((dx == 0) || (dy == 0)) {
+			return ERR_INVALID_DATA;
+		}
+		Factor1_x_prime = (x2 - x1) / dx;
+		Factor2_x_prime	= x1 - ((vartype_real *)reg_t)->x * Factor1_x_prime;
+		Factor1_y_prime	= (y2 - y1) / dy;
+		Factor2_y_prime	= y1 - ((vartype_real *)reg_y)->x * Factor1_y_prime;
+		err = ERR_NONE;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
 	}
 	return ERR_NONE;
 }
@@ -174,14 +221,14 @@ int hpil_pinit_completion(int error) {
 				dx = P2_x - P1_x;
 				dy = P2_y - P1_y;
 				if ((dx == 0) || (dy == 0)) {
-					error == ERR_PLOTTER_DATA_ERR;
+					error = ERR_PLOTTER_DATA_ERR;
 				}
 				else {
 					ratio = dx / dy;
 					if (ratio < 0) {
 						ratio = -ratio;
 					}
-					ratio = floor(ratio * 10000 + 0.5) / 10000;
+					ratio = floor(ratio * 10000) / 10000;
 					if (ratio > 1) {
 						// y is the shortest axis, set yscale for 100 units
 						Factor1_y = dy / 100;

@@ -21,6 +21,7 @@
 
 // commands
 int docmd_pinit(arg_struct *arg);
+int docmd_ratio(arg_struct *arg);
 int docmd_scale(arg_struct *arg);
 int docmd_prcl(arg_struct *arg);
 #endif

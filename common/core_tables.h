@@ -449,10 +449,11 @@
 #define CMD_OUTAN		403
 #define CMD_OUTXB		404
 #define CMD_PINIT		405
-#define CMD_SCALE		406
-#define CMD_PRCL		407
+#define CMD_RATIO		406
+#define CMD_SCALE		407
+#define CMD_PRCL		408
 /* end of commands */
-#define CMD_SENTINEL    408
+#define CMD_SENTINEL    409
 
 /* command_spec.argtype */
 
