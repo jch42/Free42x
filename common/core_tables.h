@@ -420,40 +420,50 @@
 #define CMD_STAT		376
 #define CMD_ID			377
 #define CMD_AID			378
+#define CMD_BLDSPEC		379			// only for plotter module compatibility, check < 128
 /* hp-il mass storage operations */
-#define CMD_CREATE		379
-#define CMD_DIR			380
-#define CMD_NEWM		381
-#define CMD_PURGE	    382
-#define CMD_READP		383			// yep, readp freed from Copan extensions
-#define CMD_READR		384
-#define CMD_RENAME		385
-#define CMD_SEC			386
-#define CMD_UNSEC		387
-#define CMD_WRTP		388
-#define CMD_WRTR		389
-#define CMD_ZERO		390
+#define CMD_CREATE		380
+#define CMD_DIR			381
+#define CMD_NEWM		382
+#define CMD_PURGE	    383
+#define CMD_READP		384			// yep, readp freed from Copan extensions
+#define CMD_READR		385
+#define CMD_RENAME		386
+#define CMD_SEC			387
+#define CMD_UNSEC		388
+#define CMD_WRTP		389
+#define CMD_WRTR		390
+#define CMD_ZERO		391
 /* hp-il extended io */
-#define CMD_ANUMDEL		391
-#define CMD_CLRDEV		392
-#define CMD_CLRLOOP		393
-#define CMD_INAC		394
-#define CMD_INACL		395
-#define CMD_INAE		396
-#define CMD_INAN		397
-#define CMD_INXB		398
-#define CMD_INACCL		399
-#define CMD_OUTAC		400
-#define CMD_OUTACL		401
-#define CMD_OUTAE		402
-#define CMD_OUTAN		403
-#define CMD_OUTXB		404
-#define CMD_PINIT		405
-#define CMD_RATIO		406
-#define CMD_SCALE		407
-#define CMD_PRCL		408
+#define CMD_ANUMDEL		392
+#define CMD_CLRDEV		393
+#define CMD_CLRLOOP		394
+#define CMD_INAC		395
+#define CMD_INACL		396
+#define CMD_INAE		397
+#define CMD_INAN		398
+#define CMD_INXB		399
+#define CMD_INACCL		400
+#define CMD_OUTAC		401
+#define CMD_OUTACL		402
+#define CMD_OUTAE		403
+#define CMD_OUTAN		404
+#define CMD_OUTXB		405
+/* hp-il plotter module */
+#define CMD_CLIPUU		406
+#define CMD_LORG		407
+#define CMD_LTYPE		408
+#define CMD_LTYPEO		409
+#define CMD_PEN			410
+#define CMD_PENDN		411
+#define CMD_PENUP		412
+#define CMD_PINIT		413
+#define CMD_PLREGX		414
+#define CMD_RATIO		415
+#define CMD_SCALE		416
+#define CMD_PRCL		417
 /* end of commands */
-#define CMD_SENTINEL    409
+#define CMD_SENTINEL    418
 
 /* command_spec.argtype */
 

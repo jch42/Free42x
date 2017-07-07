@@ -19,8 +19,24 @@
 #ifndef HPIL_PLOTTER_H
 #define HPIL_PLOTTER_H 1
 
+// Plotters persistent struct
+struct PLOTTER_IOBuf {
+	phloat BR[26];		// original I/O buffer
+	// other resources (to rebuild BR0)
+	int	lorg;
+	int plotting_status;
+};
+
 // commands
+int docmd_clipuu(arg_struct *arg);
+int docmd_lorg(arg_struct *arg);
+int docmd_ltype(arg_struct *arg);
+int docmd_ltypeo(arg_struct *arg);
+int docmd_pen(arg_struct *arg);
+int docmd_pendn(arg_struct *arg);
+int docmd_penup(arg_struct *arg);
 int docmd_pinit(arg_struct *arg);
+int docmd_plregx(arg_struct *arg);
 int docmd_ratio(arg_struct *arg);
 int docmd_scale(arg_struct *arg);
 int docmd_prcl(arg_struct *arg);

@@ -164,6 +164,27 @@ int docmd_aid(arg_struct *arg) {
 	return ERR_INTERRUPTIBLE;
 }
 
+int docmd_bldspec(arg_struct *arg) {
+	int err;
+	phloat x;
+	if (reg_x->type == TYPE_REAL) {
+		x = ((vartype_real *) reg_x)->x;
+		if ((x > 0) && (x < 128)) {
+			err = ERR_NONE;
+		}
+		else {
+			err = ERR_OUT_OF_RANGE;
+		}
+	}
+	else if (reg_x->type == TYPE_STRING) {
+		err = ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+	return err;
+}
+
 /* hpil completion routines
  *
  * All high level hpil processing is done there

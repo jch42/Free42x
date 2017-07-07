@@ -460,6 +460,7 @@ static const command_spec cmd_array[] =
     { /* STAT */        "STAT",					4, docmd_stat,        0x0000a5ef, ARG_NONE,  FLAG_NONE },
     { /* ID */          "ID",	 				2, docmd_id,          0x0000a5d9, ARG_NONE,  FLAG_NONE },
     { /* AID */         "AID",	 				3, docmd_aid,         0x0000a5d3, ARG_NONE,  FLAG_NONE },
+	{ /* BLDSPEC */		"BLDSPEC",				7, docmd_bldspec,     0x0000a746, ARG_NONE,  FLAG_HIDDEN },
 
 	// Mass Storage operations subset
 	{ /* CREATE */		"CR\305\301TE",			6, docmd_create,	  0x0000a701, ARG_NONE,  FLAG_NONE },
@@ -492,7 +493,15 @@ static const command_spec cmd_array[] =
     { /* OUTXB */       "OUTXB",			    5, docmd_outxb,       0x0000a5e7, ARG_NONE,  FLAG_NONE },
 
 	/* hpil plotter module */
+    { /* CLIPUU */      "CLIPUU",				6, docmd_clipuu,      0x0000a441, ARG_NONE,  FLAG_NONE },
+    { /* LORG */        "LORG",					4, docmd_lorg,        0x0000a450, ARG_NONE,  FLAG_NONE },
+    { /* LTYPE */       "LTYPE",				5, docmd_ltype,       0x0000a451, ARG_NONE,  FLAG_NONE },
+    { /* LTYPEO */      "LTYPEO",				6, docmd_ltypeo,      0x0000a452, ARG_NONE,  FLAG_NONE },
+    { /* PEN */         "PEN",		    	    3, docmd_pen,         0x0000a456, ARG_NONE,  FLAG_NONE },
+    { /* PENDN */       "PENDN",			    5, docmd_pendn,       0x0000a457, ARG_NONE,  FLAG_NONE },
+    { /* PENUP */       "PENUP",			    5, docmd_penup,       0x0000a458, ARG_NONE,  FLAG_NONE },
     { /* PINIT */       "PINIT",			    5, docmd_pinit,       0x0000a459, ARG_NONE,  FLAG_NONE },
+    { /* PLREGX */      "PLREGX",			    6, docmd_plregx,      0x0000a45b, ARG_NONE,  FLAG_NONE },
     { /* RATIO */       "RATIO",			    5, docmd_ratio,       0x0000a45c, ARG_NONE,  FLAG_NONE },
     { /* SCALE */       "SCALE",			    5, docmd_scale,       0x0000a45e, ARG_NONE,  FLAG_NONE },
     { /* PRCL */        "PRCL",					4, docmd_prcl,        0x0000a483, ARG_NONE,  FLAG_NONE }

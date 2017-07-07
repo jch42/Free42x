@@ -19,10 +19,7 @@
 #ifndef CORE_COMMANDS8_H
 #define CORE_COMMANDS8_H 1
 
-//#include "free42.h"
 #include "core_globals.h"
-//#include "hpil_mass.h"
-
 
 int docmd_ifc(arg_struct *arg);
 int docmd_nloop(arg_struct *arg);
@@ -35,5 +32,6 @@ int docmd_manio(arg_struct *arg);
 int docmd_stat(arg_struct *arg);
 int docmd_id(arg_struct *arg);
 int docmd_aid(arg_struct *arg);
+int docmd_bldspec(arg_struct *arg);
 
 #endif
