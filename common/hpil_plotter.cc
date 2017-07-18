@@ -49,6 +49,8 @@ struct {
 	// some variables for plregx
 	vartype * plReg;
 	int plRegFrom, plRegTo;
+	// some flags
+	int plFlag;
 } plotterData;
 
 // status information
@@ -88,16 +90,31 @@ struct {
 // [BCSIZE] Parameters
 #define BcSize plotterData.ioBuf.BR[25]
 
-#define PLOTTER_STATUS_MODE_UU 4
-#define PLOTTER_STATUS_PEN_DOWN 2
-#define PLOTTER_STATUS_OUTBOUND 1
+#define PLOTTER_STATUS_OUTBOUND		0x01
+#define PLOTTER_STATUS_PEN_DOWN		0x02
+#define PLOTTER_STATUS_MODE_UU		0x04
+
+/* Truth table :
+ * Set pen status
+ * | Set pen down
+ * v v
+ * 0 0  issue PD or PU to reflect Pen status, set Pen satus to down and issue a final PD
+ * 0 1  issue PD only is Pen status is down, , set Pen satus to down and issue a final PD
+ * 1 0  issue PU and force pen status to up 
+ * 1 1  issue PD, set Pen satus to down and issue a final PD
+ */
+#define PLOTTER_FLAG_SET_PEN_STATUS		0x01	// set pen status according to following flag. If both flags cleared, issue only pen down 
+#define PLOTTER_FLAG_SET_PEN_DOWN	0x02	// pen down flag or copy pen status flag, if set enforce pu or pd following pen status
+#define PLOTTER_FLAG_INCREMENT		0x04	// incremental move
+#define PLOTTER_FLAG_RELATIVE		0x08	// relative move, do not update initial position
+#define PLOTTER_FLAG_PLOT_REG		0x10	// plot register data
 
 extern AltBuf hpil_controllerAltBuf;
 extern DataBuf hpil_controllerDataBuf;
 
 static int hpil_plotter_cmd_completion(int);
 static int hpil_plotter_pinit_completion(int);
-static int hpil_plotter_plregx_completion(int);
+static int hpil_plotter_plot_generic_completion(int);
 
 static int hpil_plotterSelect_sub(int);
 static int hpil_plotterSend_sub(int);
@@ -125,6 +142,98 @@ int docmd_clipuu (arg_struct *arg) {
 		err = ERR_INTERRUPTIBLE;
 	}
 	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING) || (reg_z->type == TYPE_STRING) || (reg_t->type == TYPE_STRING)) {
+		return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+	return err;
+}
+
+int docmd_draw (arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL)) {
+		plotterData.plFlag = PLOTTER_FLAG_SET_PEN_STATUS | PLOTTER_FLAG_SET_PEN_DOWN;
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_plot_generic_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING)) {
+		return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+	return err;
+}
+
+int docmd_idraw (arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL)) {
+		plotterData.plFlag = PLOTTER_FLAG_SET_PEN_STATUS | PLOTTER_FLAG_SET_PEN_DOWN | PLOTTER_FLAG_INCREMENT;
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_plot_generic_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING)) {
+		return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+	return err;
+}
+
+int docmd_imove (arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL)) {
+		plotterData.plFlag = PLOTTER_FLAG_SET_PEN_STATUS | PLOTTER_FLAG_INCREMENT;
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_plot_generic_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING)) {
+		return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+	return err;
+}
+
+int docmd_iplot (arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL)) {
+		plotterData.plFlag = PLOTTER_FLAG_SET_PEN_DOWN | PLOTTER_FLAG_INCREMENT;
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_plot_generic_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING)) {
 		return ERR_ALPHA_DATA_IS_INVALID;
 	}
 	else {
@@ -237,6 +346,29 @@ int docmd_ltypeo (arg_struct *arg) {
 	return err;
 }
 
+int docmd_move (arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL)) {
+		plotterData.plFlag = PLOTTER_FLAG_SET_PEN_STATUS;
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_plot_generic_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING)) {
+		return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+	return err;
+}
+
 int docmd_pen (arg_struct *arg) {
 	int err;
 	phloat x,y;
@@ -269,6 +401,7 @@ int docmd_pendn(arg_struct *arg) {
 	if (err != ERR_NONE) {
 		return err;
 	}
+	plotterData.ioBuf.plotting_status |= PLOTTER_STATUS_PEN_DOWN;
 	sprintf((char *)hpil_controllerDataBuf.data, "PD;");
 	ILCMD_AAU;
 	hpil_step = 0;
@@ -283,6 +416,7 @@ int docmd_penup(arg_struct *arg) {
 	if (err != ERR_NONE) {
 		return err;
 	}
+	plotterData.ioBuf.plotting_status &= ~PLOTTER_STATUS_PEN_DOWN;
 	sprintf((char *)hpil_controllerDataBuf.data, "PU;");
 	ILCMD_AAU;
 	hpil_step = 0;
@@ -297,11 +431,36 @@ int docmd_pinit(arg_struct *arg) {
 	if (err != ERR_NONE) {
 		return err;
 	}
+	plotterData.ioBuf.pdir_cos = 1;
+	plotterData.ioBuf.pdir_sin = 0;
 	ILCMD_AAU;
 	hpil_step = 0;
 	hpil_completion = hpil_plotter_pinit_completion;
 	mode_interruptible = hpil_worker;
 	return ERR_INTERRUPTIBLE;
+}
+
+int docmd_plot (arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL)) {
+		plotterData.plFlag = PLOTTER_FLAG_SET_PEN_DOWN;
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_plot_generic_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING)) {
+		return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+	return err;
 }
 
 int docmd_plregx(arg_struct *arg) {
@@ -312,6 +471,7 @@ int docmd_plregx(arg_struct *arg) {
 	if (err != ERR_NONE) {
 		return err;
 	}
+	plotterData.plFlag = PLOTTER_FLAG_PLOT_REG;
 	if (reg_x->type == TYPE_REAL) {			// use regs
 		plotterData.plReg = recall_var("REGS", 4);
 		if (plotterData.plReg == NULL) {
@@ -366,7 +526,7 @@ int docmd_plregx(arg_struct *arg) {
 	}
 	ILCMD_AAU;
 	hpil_step = 0;
-	hpil_completion = hpil_plotter_plregx_completion;
+	hpil_completion = hpil_plotter_plot_generic_completion;
 	mode_interruptible = hpil_worker;
 	return ERR_INTERRUPTIBLE;
 }
@@ -399,6 +559,29 @@ int docmd_ratio(arg_struct *arg) {
 	return ERR_NONE;
 }
 
+int docmd_rplot (arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL)) {
+		plotterData.plFlag =PLOTTER_FLAG_SET_PEN_DOWN | PLOTTER_FLAG_INCREMENT | PLOTTER_FLAG_RELATIVE;
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_plot_generic_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING)) {
+		return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+	return err;
+}
+
 int docmd_scale(arg_struct *arg) {
 	int err;
 	phloat dx, dy;
@@ -423,6 +606,37 @@ int docmd_scale(arg_struct *arg) {
 	}
 	else {
 		err = ERR_INVALID_TYPE;
+	}
+	return ERR_NONE;
+}
+
+int docmd_pclbuf(arg_struct *arg) {
+	return ERR_NONE;
+}
+
+int docmd_pdir(arg_struct *arg) {
+	phloat x;
+    if (reg_x->type == TYPE_REAL) {
+		x = ((vartype_real *)reg_x)->x;
+		x = -x;
+		if (flags.f.rad) {
+			plotterData.ioBuf.pdir_sin = sin(x);
+			plotterData.ioBuf.pdir_cos = cos(x);
+		}
+		else if (flags.f.grad) {
+			plotterData.ioBuf.pdir_sin = sin_grad(x);
+			plotterData.ioBuf.pdir_cos = cos_grad(x);
+		}
+		else {
+			plotterData.ioBuf.pdir_sin = sin_deg(x);
+			plotterData.ioBuf.pdir_cos = cos_deg(x);
+		}
+    }
+	else if (reg_x->type == TYPE_STRING) {
+        return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		return ERR_INVALID_TYPE;
 	}
 	return ERR_NONE;
 }
@@ -579,7 +793,162 @@ static int hpil_plotter_pinit_completion(int error) {
 			case 5 :		// Pinit - fourth stage, get pen status;
 				i = hpil_parse((char*)hpilXCore.buf, hpilXCore.bufPtr, &Last_x_prime);
 				i += hpil_parse((char*)&hpilXCore.buf[i], hpilXCore.bufPtr - i, &Last_y_prime);
-				plotterData.ioBuf.plotting_status = PLOTTER_STATUS_MODE_UU + hpilXCore.buf[i] == '0' ? 0 : PLOTTER_STATUS_PEN_DOWN;	// set mode to UU + pen status
+				plotterData.ioBuf.plotting_status = PLOTTER_STATUS_MODE_UU + (hpilXCore.buf[i] == '0' ? 0 : PLOTTER_STATUS_PEN_DOWN);	// set mode to UU + pen status
+			default :
+				error = ERR_NONE;
+		}
+	}
+	return error;
+}
+
+static int hpil_plotter_plot_generic_completion(int error) {
+	int i, plotDone;
+	vartype_realmatrix * rm;
+	vartype_complexmatrix * cm;
+	int xIndex,yIndex;
+	phloat x, y;
+	if (error == ERR_NONE) {
+		error = ERR_INTERRUPTIBLE;
+		switch (hpil_step) {
+			case 0 :		// Select Plotter
+				hpilXCore.buf = hpil_controllerDataBuf.data;
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = 2;
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSelect_sub);
+				break;
+			case 1 :		// Segment to plot
+				// pen command to issue
+				i = 0;
+				if (!(plotterData.plFlag & PLOTTER_FLAG_SET_PEN_STATUS)) {
+					if (plotterData.ioBuf.plotting_status & PLOTTER_STATUS_PEN_DOWN) {
+						// always issue pen down command
+						i = sprintf((char *)hpil_controllerDataBuf.data, "PD;");
+					}
+					else if (plotterData.plFlag & PLOTTER_FLAG_SET_PEN_DOWN) {
+						// or issue pen up command too ?
+						i = sprintf((char *)hpil_controllerDataBuf.data, "PU;");
+					}
+					plotterData.ioBuf.plotting_status |= PLOTTER_STATUS_PEN_DOWN;
+				}
+				else {
+					// always set pen status
+					if (plotterData.plFlag & PLOTTER_FLAG_SET_PEN_DOWN) {
+						i = sprintf((char *)hpil_controllerDataBuf.data, "PD;");
+						plotterData.ioBuf.plotting_status |= PLOTTER_STATUS_PEN_DOWN;
+					}
+					else {
+						i = sprintf((char *)hpil_controllerDataBuf.data, "PU;");
+						plotterData.ioBuf.plotting_status &= ~PLOTTER_STATUS_PEN_DOWN;
+					}
+				}
+				// calculates move
+				plotDone = 1;
+				if (plotterData.plFlag & PLOTTER_FLAG_PLOT_REG) {
+					// processes real vectors, real matrix, complex matrix...
+					if (plotterData.plReg->type == TYPE_REALMATRIX) {
+						rm = (vartype_realmatrix *)plotterData.plReg;
+						if ((rm->columns == 1) && (plotterData.plRegFrom < plotterData.plRegTo)) {	// first row X, second row y
+							xIndex = plotterData.plRegFrom++;
+							yIndex = plotterData.plRegFrom++;
+							plotDone = 0;
+						}
+						else if (plotterData.plRegFrom <= plotterData.plRegTo) {	// column 0 X, column 1 Y
+							xIndex = plotterData.plRegFrom;
+							yIndex = plotterData.plRegFrom++ + rm->rows;
+							plotDone = 0;
+						}
+						if (plotDone || rm->array->is_string[xIndex] || rm->array->is_string[yIndex]) {
+							i += sprintf((char *)(&hpil_controllerDataBuf.data[i]), "PU;");
+						}
+						else {
+							x = rm->array->data[xIndex];
+							y = rm->array->data[yIndex];
+							hpil_plotter_rescale(&x, &y);
+							i += sprintf((char *)(&hpil_controllerDataBuf.data[i]), "PA %u,%u;PD;", to_int(x), to_int(y));
+						}
+					}
+					else if (plotterData.plReg->type == TYPE_COMPLEXMATRIX) {
+						cm = (vartype_complexmatrix *)plotterData.plReg;
+						if (plotterData.plRegFrom < plotterData.plRegTo) {		// real X, imaginary Y
+							xIndex = plotterData.plRegFrom++;
+							yIndex = plotterData.plRegFrom++;
+							x = cm->array->data[xIndex];
+							y = cm->array->data[yIndex];
+							hpil_plotter_rescale(&x, &y);
+							i += sprintf((char *)(&hpil_controllerDataBuf.data[i]), "PA %u,%u;PD;", to_int(x), to_int(y));
+							plotDone = 0;
+						}
+						else {
+							i += sprintf((char *)(&hpil_controllerDataBuf.data[i]), "PU;");
+						}
+					}
+					else {
+						// should not occur
+						error = ERR_INTERNAL_ERROR;
+					}
+				}
+				else {
+					// process stack
+					if (reg_x->type == TYPE_REAL && reg_y->type == TYPE_REAL) {
+						x = ((vartype_real *)reg_x)->x;
+						y = ((vartype_real *)reg_y)->x;
+						hpil_plotter_rescale(&x, &y);
+						i += sprintf((char *)(&hpil_controllerDataBuf.data[i]), "PA %u,%u;", to_int(x), to_int(y));
+						if (plotterData.ioBuf.plotting_status & PLOTTER_STATUS_PEN_DOWN) {
+							i += sprintf((char *)(&hpil_controllerDataBuf.data[i]), "PD;");
+						}
+						// always move pen up after a draw
+						i += sprintf((char *)(&hpil_controllerDataBuf.data[i]), "PU;");
+					}
+					else {
+						error = ERR_INTERNAL_ERROR;
+					}
+				}
+				if (error == ERR_INTERRUPTIBLE) {
+					hpilXCore.buf = hpil_controllerDataBuf.data;
+					hpilXCore.bufPtr = 0;
+					hpilXCore.bufSize = strlen((char *)hpilXCore.buf);
+					ILCMD_nop;
+					if (plotDone) {
+						hpil_step++;
+					}
+					error = call_ilCompletion(hpil_plotterSend_sub);
+				}
+				break;
+			case 2 :		// Send OE command
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = sprintf((char*)hpilXCore.buf, "\nOE;");
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSendGet_sub);
+				break;
+			case 3 :		// Get error, Send OA command
+				if ((hpilXCore.buf[0] == '0') ||(hpilXCore.buf[0] == '6')) {
+					if (hpilXCore.buf[0] == '6') {
+						plotterData.ioBuf.plotting_status |= PLOTTER_STATUS_OUTBOUND;
+					}
+					else {
+						plotterData.ioBuf.plotting_status &= ~PLOTTER_STATUS_OUTBOUND;
+					}
+					hpilXCore.bufPtr = 0;
+					hpilXCore.bufSize = sprintf((char*)hpilXCore.buf, "\nOA;");
+					ILCMD_nop;
+					hpil_step++;
+					error = call_ilCompletion(hpil_plotterSendGet_sub);
+				}
+				else {
+					error = ERR_PLOTTER_ERR;
+				}
+				break;
+			case 4 :		// Get pen position
+				if (!(plotterData.plFlag & PLOTTER_FLAG_RELATIVE)) {
+					i = hpil_parse((char*)hpilXCore.buf, hpilXCore.bufPtr, &Last_x_prime);
+					i += hpil_parse((char*)&hpilXCore.buf[i], hpilXCore.bufPtr - i, &Last_y_prime);
+				}
+				error = ERR_NONE;
+				break;
 			default :
 				error = ERR_NONE;
 		}
@@ -874,24 +1243,43 @@ static int hpil_plotterSendGet_sub(int error) {
 }
 
 static void hpil_plotter_rescale(phloat *x, phloat *y) {
-	phloat X, Y;
-	int ix, iy;
-	X = *x;
-	Y = *y;
+	phloat X1, Y1, X2, Y2;
+	X1 = *x;
+	Y1 = *y;
 	if (plotterData.ioBuf.plotting_status & PLOTTER_STATUS_MODE_UU) {
-		X = Factor2_x_prime + Factor1_x_prime * X;
-		Y = Factor2_y_prime + Factor1_y_prime * Y;
+		X1 = Factor1_x_prime * X1;
+		Y1 = Factor1_y_prime * Y1;
+		if (plotterData.plFlag & PLOTTER_FLAG_INCREMENT) {
+			X2 = plotterData.ioBuf.pdir_cos * X1 + plotterData.ioBuf.pdir_sin * Y1;
+			Y2 = plotterData.ioBuf.pdir_cos * Y1 - plotterData.ioBuf.pdir_sin * X1;
+			X1 = X2 + Last_x;
+			Y1 = Y2 + Last_y;
+		}
+		else {
+			X1 = Factor2_x_prime + X1;
+			Y1 = Factor2_y_prime + Y1;
+		}
 	}
 	else {
-		X = Factor2_x + Factor1_x * X;
-		Y = Factor2_y + Factor1_y * Y;
+		X1 = Factor1_x * X1;
+		Y1 = Factor1_y * Y1;
+		if (plotterData.plFlag & PLOTTER_FLAG_INCREMENT) {
+			X2 = plotterData.ioBuf.pdir_cos * X1 + plotterData.ioBuf.pdir_sin * Y1;
+			Y2 = plotterData.ioBuf.pdir_cos * Y1 - plotterData.ioBuf.pdir_sin * X1;
+			X1 = X2 + Last_x;
+			Y1 = Y2 + Last_y;
+		}
+		else {
+			X1 = Factor2_x + X1;
+			Y1 = Factor2_y + Y1;
+		}
 	}
-	ix = to_int(X);
-	iy = to_int(Y);
-	Last_x = X;
-	Last_y = Y;
-	*x = X;
-	*y = Y;
+	if (!(plotterData.plFlag & PLOTTER_FLAG_RELATIVE)) {
+		Last_x = X1;
+		Last_y = Y1;
+	}
+	*x = X1;
+	*y = Y1;
 }
 
 static int hpil_parse(char *str, int len, phloat *p) {

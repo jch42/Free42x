@@ -24,20 +24,30 @@ struct PLOTTER_IOBuf {
 	phloat BR[26];		// original I/O buffer
 	// other resources (to rebuild BR0)
 	int	lorg;
+	phloat pdir_sin, pdir_cos;
 	int plotting_status;
 };
 
 // commands
 int docmd_clipuu(arg_struct *arg);
+int docmd_draw(arg_struct *arg);
+int docmd_idraw(arg_struct *arg);
+int docmd_imove(arg_struct *arg);
+int docmd_iplot(arg_struct *arg);
 int docmd_lorg(arg_struct *arg);
 int docmd_ltype(arg_struct *arg);
 int docmd_ltypeo(arg_struct *arg);
+int docmd_move(arg_struct *arg);
 int docmd_pen(arg_struct *arg);
 int docmd_pendn(arg_struct *arg);
 int docmd_penup(arg_struct *arg);
 int docmd_pinit(arg_struct *arg);
+int docmd_plot(arg_struct *arg);
 int docmd_plregx(arg_struct *arg);
 int docmd_ratio(arg_struct *arg);
+int docmd_rplot(arg_struct *arg);
 int docmd_scale(arg_struct *arg);
+int docmd_pclbuf(arg_struct *arg);
+int docmd_pdir(arg_struct *arg);
 int docmd_prcl(arg_struct *arg);
 #endif
