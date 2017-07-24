@@ -505,7 +505,7 @@ static const command_spec cmd_array[] =
     { /* IPLOT */      	"IPLOT",				5, docmd_iplot,       0x0000a44a, ARG_NONE,  FLAG_NONE },
     { /* LABEL */       "LABEL",				5, docmd_label,       0x0000a44b, ARG_NONE,  FLAG_NONE },
     { /* LDIR */      	"LDIR",					4, docmd_ldir,        0x0000a44b, ARG_NONE,  FLAG_NONE },
-    { /* LIMIT */       "LIMIT",				5, docmd_xrom,        0x0000a44d, ARG_NONE,  FLAG_HIDDEN },
+    { /* LIMIT */       "LIMIT",				5, docmd_limit,       0x0000a44d, ARG_NONE,  FLAG_NONE },
     { /* LOCATD */      "LOCATD",				6, docmd_xrom,        0x0000a44e, ARG_NONE,  FLAG_HIDDEN },
     { /* LOCATE */      "LOCATE",				6, docmd_xrom,        0x0000a44f, ARG_NONE,  FLAG_HIDDEN },
     { /* LORG */        "LORG",					4, docmd_lorg,        0x0000a450, ARG_NONE,  FLAG_NONE },

@@ -115,7 +115,7 @@ extern DataBuf hpil_controllerDataBuf;
 
 static int hpil_plotter_cmd_completion(int);
 static int hpil_plotter_label_completion(int);
-static int hpil_plotter_pinit_completion(int);
+static int hpil_plotter_limit_pinit_completion(int);
 static int hpil_plotter_plot_generic_completion(int);
 
 static int hpil_plotterSelect_sub(int);
@@ -461,6 +461,34 @@ int docmd_ldir (arg_struct *arg) {
 	return err;
 }
 
+int docmd_limit (arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL) && (reg_z->type == TYPE_REAL) && (reg_t->type == TYPE_REAL)) {
+		x1 = ((vartype_real *)reg_t)->x * 40;
+		y1 = ((vartype_real *)reg_y)->x * 40;
+		x2 = ((vartype_real *)reg_z)->x * 40;
+		y2 = ((vartype_real *)reg_x)->x * 40;
+		sprintf((char *)hpil_controllerDataBuf.data, "IP %u,%u,%u,%u;",
+			to_int(x1), to_int(y1), to_int(x2), to_int(y2));
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_limit_pinit_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING) || (reg_z->type == TYPE_STRING) || (reg_t->type == TYPE_STRING)) {
+		err = ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+	return err;
+}
+
 int docmd_lorg (arg_struct *arg) {
 	int err;
 	phloat x, res;
@@ -580,7 +608,7 @@ int docmd_move (arg_struct *arg) {
 		err = ERR_INTERRUPTIBLE;
 	}
 	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING)) {
-		return ERR_ALPHA_DATA_IS_INVALID;
+		err = ERR_ALPHA_DATA_IS_INVALID;
 	}
 	else {
 		err = ERR_INVALID_TYPE;
@@ -653,8 +681,8 @@ int docmd_pinit(arg_struct *arg) {
 	plotterData.ioBuf.pdir_cos = 1;
 	plotterData.ioBuf.pdir_sin = 0;
 	ILCMD_AAU;
-	hpil_step = 0;
-	hpil_completion = hpil_plotter_pinit_completion;
+	hpil_step = 4;
+	hpil_completion = hpil_plotter_limit_pinit_completion;
 	mode_interruptible = hpil_worker;
 	return ERR_INTERRUPTIBLE;
 }
@@ -1054,28 +1082,60 @@ static int hpil_plotter_label_completion(int error) {
 	return error;
 }
 
-static int hpil_plotter_pinit_completion(int error) {
+static int hpil_plotter_limit_pinit_completion(int error) {
 	int i;
 	phloat dx, dy, ratio;
 	if (error == ERR_NONE) {
 		error = ERR_INTERRUPTIBLE;
 		switch (hpil_step) {
-			case 0 :		// Select Plotter
-				hpilXCore.buf = hpil_controllerDataBuf.data;
+			case 0 :		// Limit entry point  - Select Plotter
+				hpilXCore.buf = hpil_controllerAltBuf.data;
 				hpilXCore.bufPtr = 0;
 				hpilXCore.bufSize = 2;
 				ILCMD_nop;
 				hpil_step++;
 				error = call_ilCompletion(hpil_plotterSelect_sub);
 				break;
-			case 1 :		// Pinit - first stage send DF;DI;SP1;OP;
+			case 1 :		// set limit
+				hpilXCore.buf = hpil_controllerDataBuf.data;
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = strlen((char *)hpilXCore.buf);
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSend_sub);
+				break;
+			case 2 :		// Send OE command
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = sprintf((char*)hpilXCore.buf, "\nOE;");
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSendGet_sub);
+				break;
+			case 3 :		// Get error;
+				if (hpilXCore.buf[0] == '0'){
+					ILCMD_AAU;
+					hpil_step += 2;
+				}
+				else {
+					error = ERR_PLOTTER_ERR;
+				}
+				break;
+			case 4 :		// Pinitit entry point  - Select Plotter
+				hpilXCore.buf = hpil_controllerAltBuf.data;
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = 2;
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSelect_sub);
+				break;
+			case 5 :		// Pinit - first stage send DF;DI;SP1;OP;
 				hpilXCore.bufPtr = 0;
 				hpilXCore.bufSize = sprintf((char*)hpilXCore.buf, "DF;DI;SP1;OP;");
 				ILCMD_nop;
 				hpil_step++;
 				error = call_ilCompletion(hpil_plotterSendGet_sub);
 				break;
-			case 2 :		// Pinit - first stage process P1,P2, second stage get error status send \nOE;
+			case 6 :		// Pinit - first stage process P1,P2, second stage get error status send \nOE;
 				// graphics limits in APU
 				i = hpil_parse((char*)hpilXCore.buf, hpilXCore.bufPtr, &P1_x);
 				i += hpil_parse((char*)&hpilXCore.buf[i], hpilXCore.bufPtr - i, &P1_y);
@@ -1123,7 +1183,7 @@ static int hpil_plotter_pinit_completion(int error) {
 				hpil_step++;
 				error = call_ilCompletion(hpil_plotterSendGet_sub);
 				break;
-			case 3 :		// Pinit - second stage process error code, third stage send IW
+			case 7 :		// Pinit - second stage process error code, third stage send IW
 				if ((hpilXCore.bufPtr == 1) && (hpilXCore.buf[0] == '0')) {
 					hpilXCore.bufPtr = 0;
 					hpilXCore.bufSize = sprintf((char *)hpilXCore.buf, "IW %u,%u,%u,%u;",
@@ -1136,14 +1196,14 @@ static int hpil_plotter_pinit_completion(int error) {
 					error = ERR_PLOTTER_ERR;
 				}
 				break;
-			case 4 :		// Pinit - fourth stage, get pen position and status send OA
+			case 8 :		// Pinit - fourth stage, get pen position and status send OA
 				hpilXCore.bufPtr = 0;
 				hpilXCore.bufSize = sprintf((char*)hpilXCore.buf, "\nOA;");
 				ILCMD_nop;
 				hpil_step++;
 				error = call_ilCompletion(hpil_plotterSendGet_sub);
 				break;
-			case 5 :		// Pinit - fourth stage, get pen status;
+			case 9 :		// Pinit - fourth stage, get pen status;
 				i = hpil_parse((char*)hpilXCore.buf, hpilXCore.bufPtr, &Last_x_prime);
 				i += hpil_parse((char*)&hpilXCore.buf[i], hpilXCore.bufPtr - i, &Last_y_prime);
 				plotterData.ioBuf.plotting_status = PLOTTER_STATUS_MODE_UU + (hpilXCore.buf[i] == '0' ? 0 : PLOTTER_STATUS_PEN_DOWN);	// set mode to UU + pen status
