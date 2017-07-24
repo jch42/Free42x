@@ -27,7 +27,7 @@
 /* Implementations of HP-42S built-in functions, part 6 */
 /********************************************************/
 
-static int mappable_sin_r(phloat x, phloat *y) {
+int mappable_sin_r(phloat x, phloat *y) {
     if (flags.f.rad)
         *y = sin(x);
     else if (flags.f.grad)
@@ -73,7 +73,7 @@ int docmd_sin(arg_struct *arg) {
         return ERR_ALPHA_DATA_IS_INVALID;
 }
 
-static int mappable_cos_r(phloat x, phloat *y) {
+int mappable_cos_r(phloat x, phloat *y) {
     if (flags.f.rad)
         *y = cos(x);
     else if (flags.f.grad)
@@ -119,7 +119,7 @@ int docmd_cos(arg_struct *arg) {
         return ERR_ALPHA_DATA_IS_INVALID;
 }
 
-static int mappable_tan_r(phloat x, phloat *y) {
+int mappable_tan_r(phloat x, phloat *y) {
     if (flags.f.rad) {
         *y = tan(x);
     } else if (flags.f.grad) {

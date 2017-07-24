@@ -22,6 +22,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include "core_commands6.h"
 #include "core_globals.h"
 #include "core_helpers.h"
 #include "core_main.h"
@@ -113,6 +114,7 @@ extern AltBuf hpil_controllerAltBuf;
 extern DataBuf hpil_controllerDataBuf;
 
 static int hpil_plotter_cmd_completion(int);
+static int hpil_plotter_label_completion(int);
 static int hpil_plotter_pinit_completion(int);
 static int hpil_plotter_plot_generic_completion(int);
 
@@ -150,6 +152,141 @@ int docmd_clipuu (arg_struct *arg) {
 	return err;
 }
 
+int docmd_csize (arg_struct *arg) {
+	int err, i;
+	char save_decimal_point;
+	phloat x;
+	phloat dx, dy, r, h, w;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if (reg_x->type == TYPE_REAL) {
+		x = ((vartype_real *) reg_x)->x;
+		// get absolute value
+		if (x < 0) {
+			x = -x;
+		}
+		// calculate ratio
+		dx = P2_x - P1_x;
+		dy = P2_y - P1_y;
+		if ((dx == 0) || (dy == 0)) {
+			return ERR_PLOTTER_DATA_ERR;
+		}
+		r = dx / dy;
+		if (r < 0) {
+			r = -r;
+		}
+		// calculate h & w :
+		// if ratio >= 1 : h = x * 0.5 & w = h * 0.7 * ratio 
+		// if ratio < 1 : w = x * 0.35 & h = w * ratio / 0.7
+		if (r < 1) {
+			w = x * 0.35;
+			h = w * r / 0.7;
+		}
+		else {
+			h = x * 0.5;
+			w = h * 0.7 / r;
+		}
+		// force decimal point
+		save_decimal_point = flags.f.decimal_point;
+		flags.f.decimal_point = 1;
+		i = sprintf((char *)hpil_controllerDataBuf.data, "SR ");
+		i += phloat2string(w, (char *)&hpil_controllerDataBuf.data[i], 10, 0, 3, 0, 0, 6);
+		hpil_controllerDataBuf.data[i] = 0;
+		i += sprintf((char *)&hpil_controllerDataBuf.data[i], ",");
+		i += phloat2string(h, (char *)&hpil_controllerDataBuf.data[i], 10, 0, 3, 0, 0, 6);
+		flags.f.decimal_point = save_decimal_point;
+		hpil_controllerDataBuf.data[i] = 0;
+		i += sprintf((char *)&hpil_controllerDataBuf.data[i], ";SL 0;");
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_cmd_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if (reg_x->type == TYPE_STRING) {
+		return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+return err;
+}
+
+int docmd_csizeo (arg_struct *arg) {
+	int err, i;
+	char save_decimal_point;
+	phloat x, y, z;
+	phloat dx, dy, r, h, w, s;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL) && (reg_z->type == TYPE_REAL)) {
+		x = ((vartype_real *) reg_x)->x;
+		y = ((vartype_real *) reg_y)->x;
+		z = ((vartype_real *) reg_z)->x;
+		// get absolute values
+		if (x < 0) {
+			x = -x;
+		}
+		if (y < 0) {
+			y = -y;
+		}
+		err = mappable_tan_r(z, &s);
+		if (err != ERR_NONE) {
+			return err;
+		}
+		// calculate ratio
+		dx = P2_x - P1_x;
+		dy = P2_y - P1_y;
+		if ((dx == 0) || (dy == 0)) {
+			return ERR_PLOTTER_DATA_ERR;
+		}
+		r = dx / dy;
+		if (r < 0) {
+			r = -r;
+		}
+		// calculate h & w :
+		// if ratio >= 1 : h = x * 0.5 & w = h * 0.7 * ratio 
+		// if ratio < 1 : w = x * 0.35 & h = w * ratio / 0.7
+		if (r < 1) {
+			w = x * 0.35;
+			h = w * r / 0.7;
+		}
+		else {
+			h = x * 0.5;
+			w = h * 0.7 / r;
+		}
+		// force decimal point
+		save_decimal_point = flags.f.decimal_point;
+		flags.f.decimal_point = 1;
+		i = sprintf((char *)hpil_controllerDataBuf.data, "SR ");
+		i += phloat2string(w, (char *)&hpil_controllerDataBuf.data[i], 10, 0, 3, 0, 0, 6);
+		hpil_controllerDataBuf.data[i] = 0;
+		i += sprintf((char *)&hpil_controllerDataBuf.data[i], ",");
+		i += phloat2string(h, (char *)&hpil_controllerDataBuf.data[i], 10, 0, 3, 0, 0, 6);
+		hpil_controllerDataBuf.data[i] = 0;
+		i += sprintf((char *)&hpil_controllerDataBuf.data[i], ";SL ");
+		i += phloat2string(s, (char *)&hpil_controllerDataBuf.data[i], 10, 0, 3, 0, 0, 6);
+		i += sprintf((char *)&hpil_controllerDataBuf.data[i], ";");
+		flags.f.decimal_point = save_decimal_point;
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_cmd_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING) || (reg_z->type == TYPE_STRING)) {
+		return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+return err;
+}
+
 int docmd_draw (arg_struct *arg) {
 	int err;
 	err = hpil_check();
@@ -171,6 +308,43 @@ int docmd_draw (arg_struct *arg) {
 		err = ERR_INVALID_TYPE;
 	}
 	return err;
+}
+
+int docmd_frame(arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if (plotterData.ioBuf.plotting_status && PLOTTER_STATUS_MODE_UU) {
+		sprintf((char *)hpil_controllerDataBuf.data, "PU;PA %u,%u;PD; PA %u,%u,%u,%u,%u,%u,%u,%u;PU;",
+					to_int(x1), to_int(y1),
+					to_int(x1), to_int(y2), to_int(x2), to_int(y2), to_int(x2), to_int(y1), to_int(x1), to_int(y1));
+	}
+	else {
+		sprintf((char *)hpil_controllerDataBuf.data, "PU;PA %u,%u;PD; PA %u,%u,%u,%u,%u,%u,%u,%u;PU;",
+					to_int(P1_x), to_int(P1_x),
+					to_int(P1_x), to_int(P2_y), to_int(P2_x), to_int(P2_y), to_int(P2_x), to_int(P1_y), to_int(P1_x), to_int(P1_y));
+	}
+	ILCMD_AAU;
+	hpil_step = 0;
+	hpil_completion = hpil_plotter_cmd_completion;
+	mode_interruptible = hpil_worker;
+	return ERR_INTERRUPTIBLE;
+}
+
+int docmd_gclear(arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	sprintf((char *)hpil_controllerDataBuf.data, "AF;");
+	ILCMD_AAU;
+	hpil_step = 0;
+	hpil_completion = hpil_plotter_cmd_completion;
+	mode_interruptible = hpil_worker;
+	return ERR_INTERRUPTIBLE;
 }
 
 int docmd_idraw (arg_struct *arg) {
@@ -238,6 +412,51 @@ int docmd_iplot (arg_struct *arg) {
 	}
 	else {
 		err = ERR_INVALID_TYPE;
+	}
+	return err;
+}
+
+int docmd_label (arg_struct *arg) {
+	int err;
+	phloat x, res;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	ILCMD_AAU;
+	hpil_step = 0;
+	hpil_completion = hpil_plotter_label_completion;
+	mode_interruptible = hpil_worker;
+	return ERR_INTERRUPTIBLE;
+}
+
+int docmd_ldir (arg_struct *arg) {
+	int err, i;
+	char save_decimal_point;
+	phloat x, run, rise;
+    if (reg_x->type == TYPE_REAL) {
+		x = ((vartype_real *)reg_x)->x;
+		mappable_cos_r(x, &run);
+		mappable_sin_r(x, &rise);
+		i = sprintf((char *)hpil_controllerDataBuf.data, "DI ");
+		save_decimal_point = flags.f.decimal_point;
+		flags.f.decimal_point = 1;
+		i += phloat2string(run, (char *)&hpil_controllerDataBuf.data[i], 10, 0, 3, 0, 0, 6);
+		i += sprintf((char *)&hpil_controllerDataBuf.data[i], ",");
+		i += phloat2string(rise, (char *)&hpil_controllerDataBuf.data[i], 10, 0, 3, 0, 0, 6);
+		flags.f.decimal_point = save_decimal_point;
+		i += sprintf((char *)&hpil_controllerDataBuf.data[i], ";");
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_cmd_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+    }
+	else if (reg_x->type == TYPE_STRING) {
+        return ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		return ERR_INVALID_TYPE;
 	}
 	return err;
 }
@@ -614,23 +833,43 @@ int docmd_pclbuf(arg_struct *arg) {
 	return ERR_NONE;
 }
 
+int docmd_setgu(arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	plotterData.ioBuf.plotting_status &= ~PLOTTER_STATUS_MODE_UU;
+	sprintf((char *)hpil_controllerDataBuf.data, "IW %u,%u,%u,%u;", to_int(P1_x), to_int(P1_y), to_int(P2_x), to_int(P2_y));
+	ILCMD_AAU;
+	hpil_step = 0;
+	hpil_completion = hpil_plotter_cmd_completion;
+	mode_interruptible = hpil_worker;
+	return ERR_INTERRUPTIBLE;
+}
+
+int docmd_setuu(arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	plotterData.ioBuf.plotting_status |= PLOTTER_STATUS_MODE_UU;
+	sprintf((char *)hpil_controllerDataBuf.data, "IW %u,%u,%u,%u;", to_int(x1), to_int(y1), to_int(x2), to_int(y2));
+	ILCMD_AAU;
+	hpil_step = 0;
+	hpil_completion = hpil_plotter_cmd_completion;
+	mode_interruptible = hpil_worker;
+	return ERR_INTERRUPTIBLE;
+}
+
 int docmd_pdir(arg_struct *arg) {
 	phloat x;
     if (reg_x->type == TYPE_REAL) {
 		x = ((vartype_real *)reg_x)->x;
 		x = -x;
-		if (flags.f.rad) {
-			plotterData.ioBuf.pdir_sin = sin(x);
-			plotterData.ioBuf.pdir_cos = cos(x);
-		}
-		else if (flags.f.grad) {
-			plotterData.ioBuf.pdir_sin = sin_grad(x);
-			plotterData.ioBuf.pdir_cos = cos_grad(x);
-		}
-		else {
-			plotterData.ioBuf.pdir_sin = sin_deg(x);
-			plotterData.ioBuf.pdir_cos = cos_deg(x);
-		}
+		mappable_sin_r(x, &plotterData.ioBuf.pdir_sin);
+		mappable_cos_r(x, &plotterData.ioBuf.pdir_cos);
     }
 	else if (reg_x->type == TYPE_STRING) {
         return ERR_ALPHA_DATA_IS_INVALID;
@@ -682,12 +921,126 @@ static int hpil_plotter_cmd_completion(int error) {
 				break;
 			case 2 :		// Send OE command
 				hpilXCore.bufPtr = 0;
-				hpilXCore.bufSize = strlen((char*)hpilXCore.buf);
+				hpilXCore.bufSize = sprintf((char*)hpilXCore.buf, "\nOE;");
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSendGet_sub);
+				break;
+			case 3 :		// Get error;
+				if (hpilXCore.buf[0] == '0'){
+					error = ERR_NONE;
+				}
+				else {
+					error = ERR_PLOTTER_ERR;
+				}
+			default :
+				error = ERR_NONE;
+		}
+	}
+	return error;
+}
+
+static int hpil_plotter_label_completion(int error) {
+	int i, j;
+	if (error == ERR_NONE) {
+		error = ERR_INTERRUPTIBLE;
+		switch (hpil_step) {
+			case 0 :		// Select Plotter
+				hpilXCore.buf = hpil_controllerDataBuf.data;
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = 2;
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSelect_sub);
+				break;
+			case 1 :		// Pen Up
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = sprintf((char*)hpilXCore.buf, ";PU;");
 				ILCMD_nop;
 				hpil_step++;
 				error = call_ilCompletion(hpil_plotterSend_sub);
 				break;
-			case 3 :		// Get error;
+			case 2 :		// Label command
+				i = sprintf((char *)hpil_controllerDataBuf.data, "IW %u,%u,%u,%u;", to_int(x1), to_int(y1), to_int(x2), to_int(y2));
+				i += sprintf((char *)&hpil_controllerDataBuf.data[i], "PA %u,%u;", to_int(Last_x), to_int(Last_y));
+				i += sprintf((char *)&hpil_controllerDataBuf.data[i], "CP");
+				switch ((plotterData.ioBuf.lorg - 1) / 3) {
+					case 0 :	// 
+						i += sprintf((char *)&hpil_controllerDataBuf.data[i], "0,");
+						break;
+					case 1 :
+						if (reg_alpha_length % 2) {
+							i += sprintf((char *)&hpil_controllerDataBuf.data[i], "-%u.5,", reg_alpha_length/2);
+						}
+						else {
+							i += sprintf((char *)&hpil_controllerDataBuf.data[i], "-%u,", reg_alpha_length/2);
+						}
+						break;
+					case 2 :
+						i += sprintf((char *)&hpil_controllerDataBuf.data[i], "-%u;", reg_alpha_length);
+						break;
+					default:
+						// should not occur
+						return ERR_INTERNAL_ERROR;
+				}
+				switch (plotterData.ioBuf.lorg % 3) {
+					case 0 :	// 
+						i += sprintf((char *)&hpil_controllerDataBuf.data[i], "-.5;");
+						break;
+					case 1 :
+						i += sprintf((char *)&hpil_controllerDataBuf.data[i], "0;");
+						break;
+					case 2 :
+						i += sprintf((char *)&hpil_controllerDataBuf.data[i], "-.25;");
+						break;
+					default:
+						// should not occur
+						return ERR_INTERNAL_ERROR;
+				}
+				i += sprintf((char *)&hpil_controllerDataBuf.data[i], "LB");
+				for (j = 0; j < reg_alpha_length; j++) {
+					hpil_controllerDataBuf.data[i++] = reg_alpha[j];
+				}
+				i += sprintf((char *)&hpil_controllerDataBuf.data[i], "\3;");
+				if (!flags.f.hpil_ina_err) {			// same flag used to enable next label on same line
+					i += sprintf((char *)&hpil_controllerDataBuf.data[i], "CP;");
+				}
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = i;
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSend_sub);
+				break;
+			case 3 :		// OC command
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = sprintf((char *)hpil_controllerDataBuf.data, "OC;");
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSendGet_sub);
+				break;
+			case 4 :		// Get pen position, restore IW
+				i = hpil_parse((char*)hpilXCore.buf, hpilXCore.bufPtr, &Last_x_prime);
+				Last_x = Last_x_prime;
+				i += hpil_parse((char*)&hpilXCore.buf[i], hpilXCore.bufPtr - i, &Last_y_prime);
+				Last_y = Last_y_prime;
+				hpilXCore.bufPtr = 0;
+				if (plotterData.ioBuf.plotting_status & PLOTTER_STATUS_MODE_UU) {
+					hpilXCore.bufSize = sprintf((char *)hpil_controllerDataBuf.data, "IW %u,%u,%u,%u;", to_int(x1), to_int(y1), to_int(x2), to_int(y2));
+				}
+				else {
+					hpilXCore.bufSize = sprintf((char *)hpil_controllerDataBuf.data, "IW %u,%u,%u,%u;", to_int(P1_x), to_int(P1_y), to_int(P2_x), to_int(P2_y));
+				}
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSend_sub);
+				break;
+			case 5 :
+				hpilXCore.bufSize = sprintf((char*)hpilXCore.buf, "\nOE;");
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSendGet_sub);
+				break;
+			case 6 :		// Get error;
 				if (hpilXCore.buf[0] == '0'){
 					error = ERR_NONE;
 				}
@@ -956,6 +1309,7 @@ static int hpil_plotter_plot_generic_completion(int error) {
 	return error;
 }
 
+/*
 static int hpil_plotter_plregx_completion(int error) {
 	int i, penUp, plotDone;
 	vartype_realmatrix * rm;
@@ -1084,6 +1438,7 @@ static int hpil_plotter_plregx_completion(int error) {
 	}
 	return error;
 }
+*/
 
 static int hpil_plotterSelect_sub(int error) {
 	static int i, n;
@@ -1273,6 +1628,18 @@ static void hpil_plotter_rescale(phloat *x, phloat *y) {
 			X1 = Factor2_x + X1;
 			Y1 = Factor2_y + Y1;
 		}
+	}
+	if (X1 < 0) {
+		X1 = 0;
+	}
+	if (Y1 < 0) {
+		Y1 = 0;
+	}
+	if (X1 > 32000) {
+		X1 = 32000;
+	}
+	if (Y1 > 32000) {
+		Y1 = 32000;
 	}
 	if (!(plotterData.plFlag & PLOTTER_FLAG_RELATIVE)) {
 		Last_x = X1;

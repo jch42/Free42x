@@ -316,7 +316,7 @@ typedef union {
         char f14;
         char trace_print;	/* 'normal_print' ignored if this is set */
         char normal_print;
-        char hpil_ina_err;	/* ina, end condition not found, fill up alpha buf */
+        char hpil_ina_err;	/* ina, end condition not found, fill up alpha buf / plotter module, disable CR/LF in label */
 		char hpil_ina_eol;	/* ina, crlf condition Ok */
 		char f19; char f20;
         char printer_enable;

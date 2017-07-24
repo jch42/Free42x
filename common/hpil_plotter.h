@@ -30,10 +30,16 @@ struct PLOTTER_IOBuf {
 
 // commands
 int docmd_clipuu(arg_struct *arg);
+int docmd_csize(arg_struct *arg);
+int docmd_csizeo(arg_struct *arg);
 int docmd_draw(arg_struct *arg);
+int docmd_frame(arg_struct *arg);
+int docmd_gclear(arg_struct *arg);
 int docmd_idraw(arg_struct *arg);
 int docmd_imove(arg_struct *arg);
 int docmd_iplot(arg_struct *arg);
+int docmd_label(arg_struct *arg);
+int docmd_ldir(arg_struct *arg);
 int docmd_lorg(arg_struct *arg);
 int docmd_ltype(arg_struct *arg);
 int docmd_ltypeo(arg_struct *arg);
@@ -47,6 +53,8 @@ int docmd_plregx(arg_struct *arg);
 int docmd_ratio(arg_struct *arg);
 int docmd_rplot(arg_struct *arg);
 int docmd_scale(arg_struct *arg);
+int docmd_setgu(arg_struct *arg);
+int docmd_setuu(arg_struct *arg);
 int docmd_pclbuf(arg_struct *arg);
 int docmd_pdir(arg_struct *arg);
 int docmd_prcl(arg_struct *arg);

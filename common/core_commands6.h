@@ -21,8 +21,11 @@
 #include "free42.h"
 #include "core_globals.h"
 
+int mappable_sin_r(phloat x, phloat *y);
 int docmd_sin(arg_struct *arg);
+int mappable_cos_r(phloat x, phloat *y);
 int docmd_cos(arg_struct *arg);
+int mappable_tan_r(phloat x, phloat *y);
 int docmd_tan(arg_struct *arg);
 int docmd_asin(arg_struct *arg);
 int docmd_acos(arg_struct *arg);
