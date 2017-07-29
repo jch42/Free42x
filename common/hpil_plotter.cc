@@ -52,6 +52,9 @@ struct {
 	int plRegFrom, plRegTo;
 	// some flags
 	int plFlag;
+	// from one tick to another...
+	phloat plLastTick;
+	phloat plTick;
 } plotterData;
 
 // status information
@@ -104,11 +107,15 @@ struct {
  * 1 0  issue PU and force pen status to up 
  * 1 1  issue PD, set Pen satus to down and issue a final PD
  */
-#define PLOTTER_FLAG_SET_PEN_STATUS		0x01	// set pen status according to following flag. If both flags cleared, issue only pen down 
+#define PLOTTER_FLAG_SET_PEN_STATUS	0x01	// set pen status according to following flag. If both flags cleared, issue only pen down 
 #define PLOTTER_FLAG_SET_PEN_DOWN	0x02	// pen down flag or copy pen status flag, if set enforce pu or pd following pen status
 #define PLOTTER_FLAG_INCREMENT		0x04	// incremental move
 #define PLOTTER_FLAG_RELATIVE		0x08	// relative move, do not update initial position
 #define PLOTTER_FLAG_PLOT_REG		0x10	// plot register data
+
+#define PLOTTER_FLAG_AXIS_Y			0x20	// X or Y axis
+#define PLOTTER_FLAG_AXIS_TICK		0x40	// plot axis tick
+#define PLOTTER_FLAG_AXIS_LABEL		0x40	// plot axis label
 
 extern AltBuf hpil_controllerAltBuf;
 extern DataBuf hpil_controllerDataBuf;
@@ -482,6 +489,34 @@ int docmd_limit (arg_struct *arg) {
 	}
 	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING) || (reg_z->type == TYPE_STRING) || (reg_t->type == TYPE_STRING)) {
 		err = ERR_ALPHA_DATA_IS_INVALID;
+	}
+	else {
+		err = ERR_INVALID_TYPE;
+	}
+	return err;
+}
+
+int docmd_locate (arg_struct *arg) {
+	int err;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	if ((reg_x->type == TYPE_REAL) && (reg_y->type == TYPE_REAL) && (reg_z->type == TYPE_REAL) && (reg_t->type == TYPE_REAL)) {
+		x1 = Factor2_x + ((vartype_real *)reg_t)->x * Factor1_x;
+		y1 = Factor2_y + ((vartype_real *)reg_y)->x * Factor1_y;
+		x2 = Factor2_x + ((vartype_real *)reg_z)->x * Factor1_x;
+		y2 = Factor2_y + ((vartype_real *)reg_x)->x * Factor1_y;
+		sprintf((char *)hpil_controllerDataBuf.data, "IW %u,%u,%u,%u;",
+			to_int(x1), to_int(y1), to_int(x2), to_int(y2));
+		ILCMD_AAU;
+		hpil_step = 0;
+		hpil_completion = hpil_plotter_cmd_completion;
+		mode_interruptible = hpil_worker;
+		err = ERR_INTERRUPTIBLE;
+	}
+	else if ((reg_x->type == TYPE_STRING) || (reg_y->type == TYPE_STRING) || (reg_z->type == TYPE_STRING) || (reg_t->type == TYPE_STRING)) {
+		return ERR_ALPHA_DATA_IS_INVALID;
 	}
 	else {
 		err = ERR_INVALID_TYPE;
@@ -1058,6 +1093,191 @@ static int hpil_plotter_label_completion(int error) {
 				else {
 					hpilXCore.bufSize = sprintf((char *)hpil_controllerDataBuf.data, "IW %u,%u,%u,%u;", to_int(P1_x), to_int(P1_y), to_int(P2_x), to_int(P2_y));
 				}
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSend_sub);
+				break;
+			case 5 :
+				hpilXCore.bufSize = sprintf((char*)hpilXCore.buf, "\nOE;");
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSendGet_sub);
+				break;
+			case 6 :		// Get error;
+				if (hpilXCore.buf[0] == '0'){
+					error = ERR_NONE;
+				}
+				else {
+					error = ERR_PLOTTER_ERR;
+				}
+			default :
+				error = ERR_NONE;
+		}
+	}
+	return error;
+}
+
+static int hpil_plotter_axis_completion(int error) {
+	int i, j;
+    int dispmode, digits;
+	phloat x, y, t, inc;
+	char buf[50];
+	if (error == ERR_NONE) {
+		error = ERR_INTERRUPTIBLE;
+		switch (hpil_step) {
+			case 0 :		// Select Plotter
+				hpilXCore.buf = hpil_controllerDataBuf.data;
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = 2;
+				ILCMD_nop;
+				hpil_step++;
+				error = call_ilCompletion(hpil_plotterSelect_sub);
+				break;
+			case 1 :		// Pen up, move to start of axis, Pen Down, prepare first segment 
+				x = ((vartype_real *)reg_z)->x;
+				plotterData.plLastTick = x;
+				y = ((vartype_real *)reg_y)->x;
+				if (plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) {
+					// invert x & y axis
+					t = y;
+					y = x;
+					x = t;
+				}
+				hpil_plotter_rescale(&x, &y);
+				i = sprintf((char *)hpil_controllerDataBuf.data, "PU;PA %u,%u;PD;", to_int(x), to_int(y));
+				plotterData.plTick = ((vartype_real *)reg_y)->x;
+				hpil_step++;
+			case 2 :		// Draw segments and ticks
+				if (plotterData.plTick < 0) {
+					if (!(plotterData.plFlag & PLOTTER_FLAG_AXIS_LABEL)) {
+						x = plotterData.plLastTick + fmod(((vartype_real *)reg_t)->x - ((vartype_real *)reg_z)->x, -inc) ;
+					}
+					plotterData.plTick = -plotterData.plTick;
+				}
+				else {
+					x = plotterData.plLastTick + plotterData.plTick;
+				}
+				if (x > ((vartype_real *)reg_t)->x) {
+					x = ((vartype_real *)reg_t)->x;
+					plotterData.plFlag &= ~PLOTTER_FLAG_AXIS_TICK;
+					hpil_step++;
+				}
+				y = ((vartype_real *)reg_y)->x;
+				plotterData.plLastTick = x;
+				if (plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) {
+					// invert x & y axis
+					t = y;
+					y = x;
+					x = t;
+				}
+				hpil_plotter_rescale(&x, &y);
+				i += sprintf((char *)&hpil_controllerDataBuf.data[i], "PA %u,%u;", to_int(x), to_int(y));
+				if (plotterData.plFlag & PLOTTER_FLAG_AXIS_TICK) {
+					if (plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) {
+						i += sprintf((char *)(&hpil_controllerDataBuf.data[i]), "TY;");
+					}
+					else {
+						i += sprintf((char *)(&hpil_controllerDataBuf.data[i]), "TX;");
+					}
+				}
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = i;
+				i = 0;
+				ILCMD_nop;
+				error = call_ilCompletion(hpil_plotterSend_sub);
+				break;
+			case 3 :		// Prepare for labels...
+				if (plotterData.plFlag & PLOTTER_FLAG_AXIS_LABEL) {
+					// Labels are in GU's
+					i = sprintf((char *)hpil_controllerDataBuf.data, "PU;IW %u,%u,%u,%u;", to_int(P1_x), to_int(P1_y), to_int(P2_x), to_int(P2_y));
+					// Label orientation for x axis
+					if (!(plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) && (((vartype_real *)reg_y)->x > 0)) {
+						i += sprintf((char *)(&hpil_controllerDataBuf.data[i]), "DI0,1;");
+					}
+					plotterData.plLastTick = ((vartype_real *)reg_z)->x;
+				}
+				else {
+					i = sprintf((char *)hpil_controllerDataBuf.data, "PU;");
+				}
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = i;
+				i = 0;
+				ILCMD_nop;
+				error = call_ilCompletion(hpil_plotterSend_sub);
+				break;
+			case 4 :	// Process labels
+				x = plotterData.plLastTick;
+				if (plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) {
+					// invert x & y axis
+					y = x;
+					x = x1;
+				}
+				else {
+					y = y1;
+				}
+				hpil_plotter_rescale(&x, &y);
+				// label base line is plot bounds
+				if (plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) {
+					x = x1;
+				}
+				else {
+					y = y1;
+				}
+				i = sprintf((char *)hpil_controllerDataBuf.data, "PA %u,%u;", to_int(x), to_int(y));
+				// write label to alpha_reg
+				digits = 0;
+				if (flags.f.fix_or_all) {
+					dispmode = flags.f.eng_or_all ? 3 : 0;
+				}
+				else {
+					dispmode = flags.f.eng_or_all ? 2 : 1;
+				}
+				if (flags.f.digits_bit3) {
+					digits += 8;
+				}
+				if (flags.f.digits_bit2) {
+					digits += 4;
+				}
+				if (flags.f.digits_bit1) {
+					digits += 2;
+				}
+				if (flags.f.digits_bit0) {
+					digits += 1;
+				}
+				reg_alpha_length = phloat2string(plotterData.plLastTick, reg_alpha, 44,
+                                 1, digits, dispmode, flags.f.thousands_separators, 12);
+				// plot label if within plot bounds
+				if (!(x < x1 || x > x2 || y < y1 || y > y2)) {
+					if (!(plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) && (((vartype_real *)reg_y)->x > 0)) {
+						if (reg_alpha_length % 2) {
+							i += sprintf((char *)&hpil_controllerDataBuf.data[i], "CP -%u.5,-.25;", reg_alpha_length/2);
+						}
+						else {
+							i += sprintf((char *)&hpil_controllerDataBuf.data[i], "CP -%u,-.25;", 1 + reg_alpha_length/2);
+						}
+					}
+					else {
+						i += sprintf((char *)&hpil_controllerDataBuf.data[i], "CP -%u,-.25;", reg_alpha_length + 1);
+					}
+					i += sprintf((char *)&hpil_controllerDataBuf.data[i], "LB");
+					for (j = 0; j < reg_alpha_length; j++) {
+						hpil_controllerDataBuf.data[i++] = reg_alpha[j];
+					}
+					i += sprintf((char *)&hpil_controllerDataBuf.data[i], "\3;");
+				}
+				// Prepare next label or next exit
+				plotterData.plLastTick += plotterData.plTick;
+				if (plotterData.plLastTick > ((vartype_real *)reg_t)->x) {
+					if (plotterData.ioBuf.plotting_status &PLOTTER_STATUS_MODE_UU) {
+						sprintf((char *)hpil_controllerDataBuf.data, "DI;IW %u,%u,%u,%u;", to_int(x1), to_int(y1), to_int(x2), to_int(y2));
+					}
+					else {
+						sprintf((char *)hpil_controllerDataBuf.data, "DI;IW %u,%u,%u,%u;", to_int(P1_x), to_int(P1_y), to_int(P2_x), to_int(P2_y));
+					}
+					hpil_step++;
+				}
+				hpilXCore.bufPtr = 0;
+				hpilXCore.bufSize = i;
 				ILCMD_nop;
 				hpil_step++;
 				error = call_ilCompletion(hpil_plotterSend_sub);

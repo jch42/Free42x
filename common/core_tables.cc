@@ -507,7 +507,7 @@ static const command_spec cmd_array[] =
     { /* LDIR */      	"LDIR",					4, docmd_ldir,        0x0000a44b, ARG_NONE,  FLAG_NONE },
     { /* LIMIT */       "LIMIT",				5, docmd_limit,       0x0000a44d, ARG_NONE,  FLAG_NONE },
     { /* LOCATD */      "LOCATD",				6, docmd_xrom,        0x0000a44e, ARG_NONE,  FLAG_HIDDEN },
-    { /* LOCATE */      "LOCATE",				6, docmd_xrom,        0x0000a44f, ARG_NONE,  FLAG_HIDDEN },
+    { /* LOCATE */      "LOCATE",				6, docmd_locate,      0x0000a44f, ARG_NONE,  FLAG_NONE },
     { /* LORG */        "LORG",					4, docmd_lorg,        0x0000a450, ARG_NONE,  FLAG_NONE },
     { /* LTYPE */       "LTYPE",				5, docmd_ltype,       0x0000a451, ARG_NONE,  FLAG_NONE },
     { /* LTYPEO */      "LTYPEO",				6, docmd_ltypeo,      0x0000a452, ARG_NONE,  FLAG_NONE },

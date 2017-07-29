@@ -41,6 +41,7 @@ int docmd_iplot(arg_struct *arg);
 int docmd_label(arg_struct *arg);
 int docmd_ldir(arg_struct *arg);
 int docmd_limit(arg_struct *arg);
+int docmd_locate(arg_struct *arg);
 int docmd_lorg(arg_struct *arg);
 int docmd_ltype(arg_struct *arg);
 int docmd_ltypeo(arg_struct *arg);
