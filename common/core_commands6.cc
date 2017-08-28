@@ -39,6 +39,15 @@ static int mappable_sin_r(phloat x, phloat *y) {
 
 static int mappable_sin_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
     /* NOTE: DEG/RAD/GRAD mode does not apply here. */
+    if (xim == 0) {
+        *yre = sin(xre);
+        *yim = 0;
+        return ERR_NONE;
+    } else if (xre == 0) {
+        *yre = 0;
+        *yim = sinh(xim);
+        return ERR_NONE;
+    }
     phloat sinxre, cosxre;
     phloat sinhxim, coshxim;
     int inf;
@@ -85,6 +94,22 @@ static int mappable_cos_r(phloat x, phloat *y) {
 
 static int mappable_cos_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
     /* NOTE: DEG/RAD/GRAD mode does not apply here. */
+    if (xim == 0) {
+        *yre = cos(xre);
+        *yim = 0;
+        return ERR_NONE;
+    } else if (xre == 0) {
+        *yre = cosh(xim);
+        int inf;
+        if ((inf = p_isinf(*yre)) != 0)
+            if (flags.f.range_error_ignore)
+                *yre = inf < 0 ? NEG_HUGE_PHLOAT : POS_HUGE_PHLOAT;
+            else
+                return ERR_OUT_OF_RANGE;
+        *yim = 0;
+        return ERR_NONE;
+    }
+
     phloat sinxre, cosxre;
     phloat sinhxim, coshxim;
     int inf;
@@ -120,65 +145,21 @@ int docmd_cos(arg_struct *arg) {
 }
 
 static int mappable_tan_r(phloat x, phloat *y) {
-    if (flags.f.rad) {
-        *y = tan(x);
-    } else if (flags.f.grad) {
-        bool neg = false;
-        if (x < 0) {
-            x = -x;
-            neg = true;
-        }
-        // [0 200[
-        x = fmod(x, 200);
-        if (x == 100)
-            goto infinite;
-        // TAN(x+100gon) = -TAN(100gon-x)
-        if (x > 100) {
-            x = 200 - x;
-            neg = !neg;
-        }
-        // to improve accuracy for x close to 100gon
-        if (x > 89)
-            *y = 1 / tan((100 - x) / (200 / PI));
-        else
-            *y = tan(x / (200 / PI)); 
-        if (neg)
-            *y = -(*y);
-    } else {
-        bool neg = false;
-        if (x < 0) {
-            x = -x;
-            neg = true;
-        }
-        // [0 180[
-        x = fmod(x, 180);
-        if (x == 90)
-            goto infinite;
-        // TAN(x+90°) = -TAN(90°-x)
-        if (x > 90) {
-            x = 180 - x;
-            neg = !neg;
-        }
-        // to improve accuracy for x close to 90°
-        if (x > 80)
-            *y = 1 / tan((90 - x) / (180 / PI));
-        else
-            *y = tan(x / (180 / PI)); 
-        if (neg)
-            *y = -(*y);
-    }
-    if (p_isnan(*y) || p_isinf(*y) != 0) {
-        infinite:
-        if (flags.f.range_error_ignore)
-            *y = POS_HUGE_PHLOAT;
-        else
-            return ERR_OUT_OF_RANGE;
-    }
-    return ERR_NONE;
+    return math_tan(x, y, false);
 }
 
 static int mappable_tan_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
     /* NOTE: DEG/RAD/GRAD mode does not apply here. */
+
+    if (xim == 0) {
+        *yim = 0;
+        return math_tan(xre, yre, true);
+    } else if (xre == 0) {
+        *yre = 0;
+        *yim = tanh(xim);
+        return ERR_NONE;
+    }
+
     phloat xre2 = xre * 2;
     if (p_isnan(xre) || p_isnan(xim) || p_isinf(xre2)) {
         *yre = NAN_PHLOAT;
@@ -304,8 +285,13 @@ static int mappable_acos_r(phloat x, phloat *y) {
 static int mappable_acos_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
     phloat tre, tim;
     int err = math_acosh(xre, xim, &tre, &tim);
-    *yre = tim;
-    *yim = -tre;
+    if (xim < 0 || xim == 0 && xre > 1) {
+        *yre = -tim;
+        *yim = tre;
+    } else {
+        *yre = tim;
+        *yim = -tre;
+    }
     return err;
 }
 
@@ -388,10 +374,28 @@ static int mappable_log_r(phloat x, phloat *y) {
 }
 
 static int mappable_log_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
-    phloat h = hypot(xre, xim);
-    if (h == 0)
-        return ERR_INVALID_DATA;
-    else {
+    if (xim == 0) {
+        if (xre == 0)
+            return ERR_INVALID_DATA;
+        if (xre > 0) {
+            *yre = log10(xre);
+            *yim = 0;
+        } else {
+            *yre = log10(-xre);
+            *yim = PI / log(10.0);
+        }
+        return ERR_NONE;
+    } else if (xre == 0) {
+        if (xim > 0) {
+            *yre = log10(xim);
+            *yim = PI / log(100.0);
+        } else {
+            *yre = log10(-xim);
+            *yim = -PI / log(100.0);
+        }
+        return ERR_NONE;
+    } else {
+        phloat h = hypot(xre, xim);
         if (p_isinf(h)) {
             const phloat s = 10000;
             h = hypot(xre / s, xim / s);
@@ -503,10 +507,28 @@ static int mappable_ln_r(phloat x, phloat *y) {
 }
 
 static int mappable_ln_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
-    phloat h = hypot(xre, xim);
-    if (h == 0)
-        return ERR_INVALID_DATA;
-    else {
+    if (xim == 0) {
+        if (xre == 0)
+            return ERR_INVALID_DATA;
+        if (xre > 0) {
+            *yre = log(xre);
+            *yim = 0;
+        } else {
+            *yre = log(-xre);
+            *yim = PI;
+        }
+        return ERR_NONE;
+    } else if (xre == 0) {
+        if (xim > 0) {
+            *yre = log(xim);
+            *yim = PI / 2;
+        } else {
+            *yre = log(-xim);
+            *yim = -PI / 2;
+        }
+        return ERR_NONE;
+    } else {
+        phloat h = hypot(xre, xim);
         if (p_isinf(h)) {
             const phloat s = 10000;
             h = hypot(xre / s, xim / s);
@@ -613,6 +635,16 @@ static int mappable_sqrt_r(phloat x, phloat *y) {
 }
 
 static int mappable_sqrt_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
+    if (xim == 0) {
+        if (xre >= 0) {
+            *yre = sqrt(xre);
+            *yim = 0;
+        } else {
+            *yre = 0;
+            *yim = sqrt(-xre);
+        }
+        return ERR_NONE;
+    }
     /* TODO: review -- is there a better way, without all the trig? */
     phloat r = sqrt(hypot(xre, xim));
     phloat phi = atan2(xim, xre) / 2;

@@ -29,11 +29,9 @@
 @synthesize autoRepeatSwitch;
 @synthesize printToTextSwitch;
 @synthesize printToTextField;
-@synthesize rawTextSwitch;
 @synthesize printToGifSwitch;
 @synthesize printToGifField;
 @synthesize maxGifLengthField;
-@synthesize popupKeyboardSwitch;
 @synthesize scrollView;
 @synthesize contentView;
 
@@ -55,11 +53,9 @@
     [autoRepeatSwitch setOn:core_settings.auto_repeat];
     [printToTextSwitch setOn:(state.printerToTxtFile != 0)];
     [printToTextField setText:[NSString stringWithCString:state.printerTxtFileName encoding:NSUTF8StringEncoding]];
-    [rawTextSwitch setOn:core_settings.raw_text];
     [printToGifSwitch setOn:(state.printerToGifFile != 0)];
     [printToGifField setText:[NSString stringWithCString:state.printerGifFileName encoding:NSUTF8StringEncoding]];
     [maxGifLengthField setText:[NSString stringWithFormat:@"%d", state.printerGifMaxLength]];
-    [popupKeyboardSwitch setOn:(state.popupKeyboard != 0)];
     
     // watch the keyboard so we can adjust the user interface if necessary.
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardDidShow:) name:UIKeyboardDidShowNotification object:nil];
@@ -151,7 +147,6 @@
         s = [s stringByAppendingString:@".txt"];
     strcpy(buf, state.printerTxtFileName);
     [s getCString:state.printerTxtFileName maxLength:FILENAMELEN encoding:NSUTF8StringEncoding];
-    core_settings.raw_text = rawTextSwitch.on;
     if (!state.printerToTxtFile || strcmp(buf, state.printerTxtFileName) != 0)
         [CalcView stopTextPrinting];
     state.printerToGifFile = printToGifSwitch.on;
@@ -172,7 +167,6 @@
         state.printerGifMaxLength = 256;
     if (!state.printerToGifFile || strcmp(buf, state.printerGifFileName) != 0)
         [CalcView stopGifPrinting];
-    state.popupKeyboard = popupKeyboardSwitch.on;
     [RootViewController showMain];
 }
 

@@ -222,10 +222,6 @@ public class Free42Activity extends Activity {
             stateFileInputStream = null;
         }
         
-        CoreSettings cs = new CoreSettings();
-        getCoreSettings(cs);
-        ShellSpool.rawText = cs.raw_text;
-        
         // Add battery monitor if API >= 4. Lower API levels don't provide
         // Intent.ACTION_BATTERY_OKAY, and I haven't figured out yet how to
         // know when to turn off the low-bat annunciator without it.
@@ -645,7 +641,6 @@ public class Free42Activity extends Activity {
         preferencesDialog.setDisplaySmoothing(displaySmoothing[orientation]);
         preferencesDialog.setPrintToText(ShellSpool.printToTxt);
         preferencesDialog.setPrintToTextFileName(ShellSpool.printToTxtFileName);
-        preferencesDialog.setRawText(cs.raw_text);
         preferencesDialog.setPrintToGif(ShellSpool.printToGif);
         preferencesDialog.setPrintToGifFileName(ShellSpool.printToGifFileName);
         preferencesDialog.setMaxGifHeight(ShellSpool.maxGifHeight);
@@ -658,7 +653,6 @@ public class Free42Activity extends Activity {
         cs.matrix_singularmatrix = preferencesDialog.getSingularMatrixError();
         cs.matrix_outofrange = preferencesDialog.getMatrixOutOfRange();
         cs.auto_repeat = preferencesDialog.getAutoRepeat();
-        cs.raw_text = preferencesDialog.getRawText();
         keyClicksEnabled = preferencesDialog.getKeyClicks();
         keyVibrationEnabled = preferencesDialog.getKeyVibration();
         int oldOrientation = preferredOrientation;
@@ -666,7 +660,6 @@ public class Free42Activity extends Activity {
         style = preferencesDialog.getStyle();
         putCoreSettings(cs);
 
-        ShellSpool.rawText = cs.raw_text;
         ShellSpool.maxGifHeight = preferencesDialog.getMaxGifHeight();
 
         boolean newPrintEnabled = preferencesDialog.getPrintToText();
@@ -763,7 +756,7 @@ public class Free42Activity extends Activity {
 
                 TextView label4 = new TextView(context);
                 label4.setId(5);
-                s = new SpannableString("http://groups.google.com/group/free42discuss");
+                s = new SpannableString("http://thomasokken.com/free42/42s.pdf");
                 Linkify.addLinks(s, Linkify.WEB_URLS);
                 label4.setText(s);
                 label4.setMovementMethod(LinkMovementMethod.getInstance());
@@ -1404,10 +1397,7 @@ public class Free42Activity extends Activity {
     private static class CoreSettings {
         public boolean matrix_singularmatrix;
         public boolean matrix_outofrange;
-        public boolean raw_text;
         public boolean auto_repeat;
-        @SuppressWarnings("unused") public boolean enable_ext_copan;
-        @SuppressWarnings("unused") public boolean enable_ext_bigstack;
         @SuppressWarnings("unused") public boolean enable_ext_accel;
         @SuppressWarnings("unused") public boolean enable_ext_locat;
         @SuppressWarnings("unused") public boolean enable_ext_heading;

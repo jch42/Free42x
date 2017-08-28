@@ -30,7 +30,83 @@ phloat math_random() {
     return random_number;
 }
 
+int math_tan(phloat x, phloat *y, bool rad) {
+    if (rad || flags.f.rad) {
+        *y = tan(x);
+    } else if (flags.f.grad) {
+        bool neg = false;
+        if (x < 0) {
+            x = -x;
+            neg = true;
+        }
+        // [0 200[
+        x = fmod(x, 200);
+        if (x == 100)
+            goto infinite;
+        // TAN(x+100gon) = -TAN(100gon-x)
+        if (x > 100) {
+            x = 200 - x;
+            neg = !neg;
+        }
+        // to improve accuracy for x close to 100gon
+        if (x > 89)
+            *y = 1 / tan((100 - x) / (200 / PI));
+        else
+            *y = tan(x / (200 / PI)); 
+        if (neg)
+            *y = -(*y);
+    } else {
+        bool neg = false;
+        if (x < 0) {
+            x = -x;
+            neg = true;
+        }
+        // [0 180[
+        x = fmod(x, 180);
+        if (x == 90)
+            goto infinite;
+        // TAN(x+90°) = -TAN(90°-x)
+        if (x > 90) {
+            x = 180 - x;
+            neg = !neg;
+        }
+        // to improve accuracy for x close to 90°
+        if (x > 80)
+            *y = 1 / tan((90 - x) / (180 / PI));
+        else
+            *y = tan(x / (180 / PI)); 
+        if (neg)
+            *y = -(*y);
+    }
+    if (p_isnan(*y) || p_isinf(*y) != 0) {
+        infinite:
+        if (flags.f.range_error_ignore)
+            *y = POS_HUGE_PHLOAT;
+        else
+            return ERR_OUT_OF_RANGE;
+    }
+    return ERR_NONE;
+}
+
 int math_asinh(phloat xre, phloat xim, phloat *yre, phloat *yim) {
+
+    if (xim == 0) {
+        *yre = asinh(xre);
+        *yim = 0;
+        return ERR_NONE;
+    } else if (xre == 0) {
+        if (xim > 1) {
+            *yre = acosh(xim);
+            *yim = PI / 2;
+        } else if (xim < -1) {
+            *yre = -acosh(-xim);
+            *yim = -PI / 2;
+        } else {
+            *yre = 0;
+            *yim = asin(xim);
+        }
+        return ERR_NONE;
+    }
 
     /* TODO: review; and deal with overflows in intermediate results */
     phloat are, aim, br, bphi;
@@ -70,6 +146,29 @@ int math_asinh(phloat xre, phloat xim, phloat *yre, phloat *yim) {
 
 int math_acosh(phloat xre, phloat xim, phloat *yre, phloat *yim) {
 
+    if (xim == 0) {
+        if (xre >= 1) {
+            *yre = acosh(xre);
+            *yim = 0;
+        } else if (xre <= -1) {
+            *yre = acosh(-xre);
+            *yim = PI;
+        } else {
+            *yre = 0;
+            *yim = acos(xre);
+        }
+        return ERR_NONE;
+    } else if (xre == 0) {
+        if (xim > 0) {
+            *yre = asinh(xim);
+            *yim = PI / 2;
+        } else {
+            *yre = -asinh(xim);
+            *yim = -PI / 2;
+        }
+        return ERR_NONE;
+    }
+
     /* TODO: review; and deal with overflows in intermediate results */
     phloat ar, aphi, are, aim, br, bphi, bre, bim, cre, cim;
 
@@ -99,11 +198,30 @@ int math_acosh(phloat xre, phloat xim, phloat *yre, phloat *yim) {
 
 int math_atanh(phloat xre, phloat xim, phloat *yre, phloat *yim) {
 
+    if (xim == 0) {
+        if (xre == 1 || xre == -1)
+            return ERR_INVALID_DATA;
+        else if (xre > -1 && xre < 1) {
+            *yre = atanh(xre);
+            *yim = 0;
+            return ERR_NONE;
+        } else {
+            *yre = log((xre + 1) / (xre - 1)) / 2;
+            if (xre > 1)
+                *yim = -PI / 2;
+            else
+                *yim = PI / 2;
+            return ERR_NONE;
+        }
+    } else if (xre == 0) {
+        *yre = 0;
+        *yim = atan(xim);
+        return ERR_NONE;
+    }
+
     phloat are, aim, bre, bim, cre, cim, h;
 
     /* TODO: review, and deal with overflows in intermediate results */
-    if (xim == 0 && (xre == 1 || xre == -1))
-        return ERR_INVALID_DATA;
 
     /* a = 1 + x */
     are = 1 + xre;
