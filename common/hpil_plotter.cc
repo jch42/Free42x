@@ -1005,6 +1005,26 @@ int docmd_ticlen (arg_struct *arg) {
 return err;
 }
 
+int docmd_unclip (arg_struct *arg) {
+	int err;
+	phloat x;
+	err = hpil_check();
+	if (err != ERR_NONE) {
+		return err;
+	}
+	x1 = P1_x;
+	x2 = P2_x;
+	y1 = P1_y;
+	y2 = P2_y;
+	sprintf((char *)hpil_controllerDataBuf.data, "IW %u,%u,%u,%u;",
+		to_int(x1), to_int(y1), to_int(x2), to_int(y2));
+	ILCMD_AAU;
+	hpil_step = 0;
+	hpil_completion = hpil_plotter_cmd_completion;
+	mode_interruptible = hpil_worker;
+	return ERR_INTERRUPTIBLE;
+}
+
 int docmd_xaxis (arg_struct *arg) {
 	int err;
 	err = hpil_check();

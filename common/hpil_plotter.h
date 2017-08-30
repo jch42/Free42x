@@ -60,6 +60,7 @@ int docmd_scale(arg_struct *arg);
 int docmd_setgu(arg_struct *arg);
 int docmd_setuu(arg_struct *arg);
 int docmd_ticlen(arg_struct *arg);
+int docmd_unclip(arg_struct *arg);
 int docmd_xaxis(arg_struct *arg);
 int docmd_yaxis(arg_struct *arg);
 int docmd_xaxiso(arg_struct *arg);

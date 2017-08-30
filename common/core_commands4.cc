@@ -23,6 +23,7 @@
 #include "core_display.h"
 #include "core_helpers.h"
 #include "core_linalg1.h"
+#include "core_math2.h"
 #include "core_sto_rcl.h"
 #include "core_variables.h"
 
@@ -117,6 +118,14 @@ int docmd_insr(arg_struct *arg) {
                 cm->array->data[i] = 0;
         }
     } else {
+        /* Make sure the new array is less than 2 GB,
+         * so it's addressable with a signed 32-bit index */
+        double d_bytes = ((double) (rows + 1)) * ((double) columns) * sizeof(phloat);
+        if (m->type == TYPE_COMPLEXMATRIX)
+            d_bytes *= 2;
+        if (((double) (int4) d_bytes) != d_bytes)
+            return ERR_INSUFFICIENT_MEMORY;
+
         /* We're sharing this array. I don't use disentangle() because it
          * does not deal with resizing. */
         int4 newsize = (rows + 1) * columns;
@@ -715,6 +724,15 @@ static int mappable_sinh_r(phloat x, phloat *y) {
 }   
 
 static int mappable_sinh_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
+    if (xim == 0) {
+        *yre = sinh(xre);
+        *yim = 0;
+        return ERR_NONE;
+    } else if (xre == 0) {
+        *yre = 0;
+        *yim = sin(xim);
+        return ERR_NONE;
+    }
     phloat sinhxre, coshxre;
     phloat sinxim, cosxim;
     int inf;
@@ -882,6 +900,15 @@ static int mappable_tanh_r(phloat x, phloat *y) {
 }   
 
 static int mappable_tanh_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
+    if (xim == 0) {
+        *yre = tanh(xre);
+        *yim = 0;
+        return ERR_NONE;
+    } else if (xre == 0) {
+        *yre = 0;
+        return math_tan(xim, yim, true);
+    }
+
     phloat xim2 = xim * 2;
     if (p_isnan(xre) || p_isnan(xim) || p_isinf(xim2)) {
         *yre = NAN_PHLOAT;
