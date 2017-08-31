@@ -1478,8 +1478,8 @@ static int hpil_plotter_axis_completion(int error) {
                                  1, digits, dispmode, flags.f.thousands_separators, 12);
 				}
 				// label in bounds ?
-				if (((plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) && ((y > y1) && (y < y2))) ||
-					(((plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) == 0) && ((x > x1) && (x < x2)))) {
+				if (((plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) && ((y >= y1) && (y <= y2))) ||
+					(((plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) == 0) && ((x >= x1) && (x <= x2)))) {
 					// set label origin
 					if (!(plotterData.plFlag & PLOTTER_FLAG_AXIS_Y) && (((vartype_real *)reg_y)->x < 0)) {
 						if (reg_alpha_length % 2) {
