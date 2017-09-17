@@ -87,6 +87,7 @@ error_spec errors[] = {
 	{ /* BAD CRC */				   "CRC don't match",		  15 },
 	{ /* NO PRINTER */			   "No printer",			  10 },
 	{ /* PRINTER ERROR */		   "Printer error",			  13 },
+	{ /* PLEASE INIT PLOTTER */	   "Please init plotter",	  19 },  
 	{ /* NO PLOTTER */			   "No plotter",			  10 },
 	{ /* PLOTTER ERROR */		   "Plotter error",			  13 },
 	{ /* PLOTTER DATA ERROR */	   "Plotter data error",	  18 },

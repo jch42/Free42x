@@ -79,10 +79,11 @@
 #define ERR_BAD_CRC				   47
 #define ERR_NO_PRINTER			   48
 #define ERR_PRINTER_ERR			   49
-#define ERR_NO_PLOTTER			   50
-#define ERR_PLOTTER_ERR			   51
-#define ERR_PLOTTER_DATA_ERR	   52
-#define ERR_PLOTTER_RANGE_ERR	   53
+#define ERR_PLOTTER_INIT		   50	
+#define ERR_NO_PLOTTER			   51
+#define ERR_PLOTTER_ERR			   52
+#define ERR_PLOTTER_DATA_ERR	   53
+#define ERR_PLOTTER_RANGE_ERR	   54
 
 typedef struct {
     const char *text;

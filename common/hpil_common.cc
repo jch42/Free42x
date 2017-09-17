@@ -23,6 +23,7 @@
 #include "core_main.h"
 #include "hpil_common.h"
 #include "hpil_controller.h"
+#include "hpil_plotter.h"
 #include "shell.h"
 #include "string.h"
 
@@ -93,6 +94,8 @@ void hpil_init(bool modeEnabled, bool modeIP, bool modePIL_Box) {
 	hpil_settings.modeIP = modeIP;
 	hpil_settings.modePIL_Box = modePIL_Box;
 	hpil_start();
+	// should init all hpil modules
+	hpil_plotter_init();
 	if (hpil_settings.modePIL_Box) {
 		shell_write_frame(M_CON);
 		loopTimeout = 250;			// 500 ms

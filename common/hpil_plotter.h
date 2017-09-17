@@ -24,10 +24,13 @@ struct PLOTTER_IOBuf {
 	phloat BR[26];		// original I/O buffer
 	// other resources (to rebuild BR0)
 	int	lorg;
-	phloat pdir_sin, pdir_cos;
 	int plotting_status;
+	phloat pdir_sin, pdir_cos;
+	bool pinit_done;
 };
 
+// module initialization
+int hpil_plotter_init();
 // commands
 int docmd_clipuu(arg_struct *arg);
 int docmd_csize(arg_struct *arg);
