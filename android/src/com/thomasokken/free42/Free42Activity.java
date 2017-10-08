@@ -833,17 +833,17 @@ public class Free42Activity extends Activity {
             super(context);
             view = new AboutView(context);
             setContentView(view);
-            this.setTitle("About Free42");
+            this.setTitle("About Free42x");
         }
         
         private class AboutView extends RelativeLayout {
             public AboutView(Context context) {
                 super(context);
                 
-                ImageView icon = new ImageView(context);
-                icon.setId(1);
-                icon.setImageResource(R.drawable.icon);
-                addView(icon);
+                ImageView icon1 = new ImageView(context);
+                icon1.setId(1);
+                icon1.setImageResource(R.drawable.free42);
+                addView(icon1);
                 
                 TextView label1 = new TextView(context);
                 label1.setId(2);
@@ -851,10 +851,10 @@ public class Free42Activity extends Activity {
                 try {
                     version = " " + getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
                 } catch (NameNotFoundException e) {}
-                label1.setText("Free42x" + version);
+                label1.setText("Free42" + version);
                 LayoutParams lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
-                lp.addRule(RelativeLayout.ALIGN_TOP, icon.getId());
-                lp.addRule(RelativeLayout.RIGHT_OF, icon.getId());
+                lp.addRule(RelativeLayout.ALIGN_TOP, icon1.getId());
+                lp.addRule(RelativeLayout.RIGHT_OF, icon1.getId());
                 addView(label1, lp);
 
                 TextView label2 = new TextView(context);
@@ -882,6 +882,7 @@ public class Free42Activity extends Activity {
                 Linkify.addLinks(s, Linkify.WEB_URLS);
                 label4.setText(s);
                 label4.setMovementMethod(LinkMovementMethod.getInstance());
+                label4.setLineSpacing(0, 2);
                 lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
                 lp.addRule(RelativeLayout.ALIGN_LEFT, label3.getId());
                 lp.addRule(RelativeLayout.BELOW, label3.getId());
@@ -895,8 +896,16 @@ public class Free42Activity extends Activity {
                 lp.addRule(RelativeLayout.BELOW, label4.getId());
                 addView(label5, lp);
 
+                ImageView icon2 = new ImageView(context);
+                icon2.setId(7);
+                icon2.setImageResource(R.drawable.hpil1);
+                lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
+                lp.addRule(RelativeLayout.ALIGN_PARENT_LEFT, label5.getId());
+                lp.addRule(RelativeLayout.ALIGN_TOP, label5.getId());
+                addView(icon2, lp);
+
                 TextView label6 = new TextView(context);
-                label6.setId(7);
+                label6.setId(8);
                 label6.setText("(C) 2015-2017 J.C. Hessemann");
                 lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
                 lp.addRule(RelativeLayout.ALIGN_LEFT, label5.getId());
@@ -904,18 +913,19 @@ public class Free42Activity extends Activity {
                 addView(label6, lp);
                 
                 TextView label7 = new TextView(context);
-                label7.setId(8);
+                label7.setId(9);
                 s = new SpannableString("https://github.com/jch42/Free42x/tree/HP-IL-Injection");
                 Linkify.addLinks(s, Linkify.WEB_URLS);
                 label7.setText(s);
                 label7.setMovementMethod(LinkMovementMethod.getInstance());
+                label7.setLineSpacing(0, 2);
                 lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
                 lp.addRule(RelativeLayout.ALIGN_LEFT, label6.getId());
                 lp.addRule(RelativeLayout.BELOW, label6.getId());
                 addView(label7, lp);
 
                 Button okB = new Button(context);
-                okB.setId(9);
+                okB.setId(10);
                 okB.setText("OK");
                 okB.setOnClickListener(new OnClickListener() {
                     public void onClick(View view) {

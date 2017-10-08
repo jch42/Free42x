@@ -3,9 +3,11 @@
 #endif
 
 #define IDD_ABOUTBOX                            103
-#define IDM_ABOUT                               105
-#define IDM_EXIT                                106
-#define IDI_FREE42                              108
+#define IDM_ABOUT                               104
+#define IDM_EXIT                                105
+#define IDI_FREE42X                             106
+#define IDI_FREE42                              107
+#define IDI_HPIL                                108
 #define IDI_SMALL                               109
 #define IDC_FREE42                              110
 #define IDD_PREFERENCES                         139

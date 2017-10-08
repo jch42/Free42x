@@ -281,6 +281,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\hpil_plotter.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\hpil_printer.cpp"
 				>
 			</File>
@@ -447,6 +451,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\hpil_plotter.h"
+				>
+			</File>
+			<File
 				RelativePath=".\hpil_printer.h"
 				>
 			</File>
@@ -490,6 +498,14 @@
 			</File>
 			<File
 				RelativePath=".\Free42.rc"
+				>
+			</File>
+			<File
+				RelativePath=".\Free42x.ico"
+				>
+			</File>
+			<File
+				RelativePath=".\Hpil.ico"
 				>
 			</File>
 			<File

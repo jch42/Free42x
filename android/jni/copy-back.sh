@@ -55,6 +55,8 @@ cp hpil_extended.cc ../../common/hpil_extended.cc
 cp hpil_extended.h ../../common/hpil_extended.h
 cp hpil_mass.cc ../../common/hpil_mass.cc
 cp hpil_mass.h ../../common/hpil_mass.h
+cp hpil_plotter.cc ../../common/hpil_plotter.cc
+cp hpil_plotter.h ../../common/hpil_plotter.h
 cp hpil_printer.cc ../../common/hpil_printer.cc
 cp hpil_printer.h ../../common/hpil_printer.h
 cp shell.h ../../common/shell.h
