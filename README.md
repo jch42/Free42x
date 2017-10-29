@@ -31,6 +31,17 @@ HP-IL functions already released:
 	CLRDEV and CLRLOOP and ANUMDEL.
 	ANUMDEL has been enhanced to allow complex numbers import.
 
+* plotter module funtions:
+	All plotter MCODE functions are implemented except those for bar codes:
+	CLIPUU, CSIZE, CSIZEO, DRAW, FRAME, GCLEAR, IDRAW, IMOVE, IPLOT
+	LABEL, LDIR, LIMIT, LOCATE, LORG, LTYPE, LTYPEO, LXAXIS, LYAXIS
+	MOVE, PEN, PENDN, PENUP, PINIT, PLOT, PLREGX, RATIO, RPLOT, SCALE
+	SETGU, SETUU, TICLEN, UNCLIP, XAXIS, YAXIS, XAXISO, YAXISO, PCLBUF
+	PDIR, PRCL
+	The main plotter user code functions have to be imported from the binaries/newplot.raw program.
+	/!\ I had to add the BLDSPEC function because it is needed in the main plotter user code program.
+	Because of the way free42 references functions in user's programs you may encounter some unattended program modification.
+	The best way to keep safe is to export all programs and clearing them before updating.
 
 SOME NOTES :
 * All versions :
