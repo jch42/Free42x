@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2017  Thomas Okken
+ * Copyright (C) 2004-2018  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -741,7 +741,7 @@ public class Free42Activity extends Activity {
 
                 TextView label2 = new TextView(context);
                 label2.setId(3);
-                label2.setText("(C) 2004-2017 Thomas Okken");
+                label2.setText("(C) 2004-2018 Thomas Okken");
                 lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
                 lp.addRule(RelativeLayout.ALIGN_LEFT, label1.getId());
                 lp.addRule(RelativeLayout.BELOW, label1.getId());
@@ -1472,6 +1472,26 @@ public class Free42Activity extends Activity {
 
     private final int[] cutoff_freqs = { 164, 220, 243, 275, 293, 324, 366, 418, 438, 550 };
     
+    private PrintAnnunciatorTurnerOffer pato = null;
+
+    private class PrintAnnunciatorTurnerOffer extends Thread {
+        public void run() {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                return;
+            } finally {
+                if (pato == this)
+                    pato = null;
+                else
+                    return;
+            }
+            Rect inval = skin.update_annunciators(-1, -1, 0, -1, -1, -1, -1);
+            if (inval != null)
+                calcView.postInvalidateScaled(inval.left, inval.top, inval.right, inval.bottom);
+        }
+    }
+
     /**
      * shell_annunciators()
      * Callback invoked by the emulator core to change the state of the display
@@ -1483,9 +1503,24 @@ public class Free42Activity extends Activity {
      * so the shell is expected to handle that one by itself.
      */
     public void shell_annunciators(int updn, int shf, int prt, int run, int g, int rad) {
+        boolean prt_off = false;
+        if (prt != -1) {
+            PrintAnnunciatorTurnerOffer p = pato;
+            pato = null;
+            if (p != null)
+                p.interrupt();
+            if (prt == 0) {
+                prt = -1;
+                prt_off = true;
+            }
+        }
         Rect inval = skin.update_annunciators(updn, shf, prt, run, -1, g, rad);
         if (inval != null)
             calcView.postInvalidateScaled(inval.left, inval.top, inval.right, inval.bottom);
+        if (prt_off) {
+            pato = new PrintAnnunciatorTurnerOffer();
+            pato.start();
+        }
     }
     
     /**
