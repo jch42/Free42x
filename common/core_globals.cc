@@ -1218,6 +1218,12 @@ static bool unpersist_globals(int4 ver) {
     free_vartype(reg_x);
     if (!unpersist_vartype(&reg_x, padded))
         goto done;
+
+    // Hack to deal with bad Android state files
+    if (reg_x == NULL)
+        goto done;
+    // End of hack
+
     free_vartype(reg_y);
     if (!unpersist_vartype(&reg_y, padded))
         goto done;
@@ -2633,7 +2639,7 @@ void hard_reset(int bad_state_file) {
     flags.f.eng_or_all = 0;
     flags.f.grad = 0;
     flags.f.rad = 0;
-    flags.f.continuous_on = 0;
+    /* flags.f.VIRTUAL_continuous_on = 0; */
     /* flags.f.VIRTUAL_solving = 0; */
     /* flags.f.VIRTUAL_integrating = 0; */
     /* flags.f.VIRTUAL_variable_menu = 0; */

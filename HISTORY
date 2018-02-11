@@ -1,3 +1,39 @@
+2018-02-02: release 2.0.12d (iPhone only)
+
+* Fixed crash in GIF printing.
+
+2018-01-30: release 2.0.12c (Android only)
+
+* Another fix for crash on orientation change while printing.
+
+2018-01-29: release 2.0.12b (Android only)
+
+* Switching between portrait and landscape modes, while printing was in
+  progress, could cause a crash. Fixed.
+
+2018-01-28: release 2.0.12a (Android only)
+
+* Fixed handling of state files that were corrupted in a way that caused
+  persistent crashes on the first keystroke.
+
+2018-01-27: release 2.0.12
+
+* Fixed pasting of SIZE lines.
+* When pasting numbers, spaces are now allowed as thousands separators.
+* Mac and MacDashboard versions: are now 64-bit.
+* Mac and GTK versions: fixed Caps Lock handling, so Caps Lock + Esc no longer
+  exits.
+* Android and iPhone versions: implemented "continuous on" mode (ON function,
+  flag 44).
+
+2018-01-26: release 2.0.11a (Android only)
+
+* Removed the cleanup of variables in core_quit(); it looks like this was
+  responsible for the failure mode where the app would crash at the first
+  keystroke, consistently, forcing uninstall/reinstall.
+* Pasting numbers that ended in CRLF, as when copying a single cell from Excel,
+  didn't work; they were interpreted as strings. Fixed.
+
 2018-01-14: release 2.0.11
 
 * Copy now ignores flag 29 (thousands separators) and always copies numbers
