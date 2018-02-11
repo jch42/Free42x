@@ -278,8 +278,7 @@ public class Free42Activity extends Activity {
         boolean isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING;
         int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
         int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-        float batteryLevel = level / (float)scale;
-        low_battery = !isCharging && batteryLevel <= 0.15;
+        low_battery = !isCharging && level * 100 <= scale * 15;
         Rect inval = skin.update_annunciators(-1, -1, -1, -1, low_battery ? 1 : 0, -1, -1);
         if (inval != null)
             calcView.postInvalidateScaled(inval.left, inval.top, inval.right, inval.bottom);
@@ -542,21 +541,8 @@ public class Free42Activity extends Activity {
     }
 
     private void doExport() {
-        byte[] buf = new byte[10000];
-        int n = core_list_programs(buf);
-        String[] names = new String[n];
-        int begin = 0;
-        for (int i = 0; i < n; i++) {
-            int end = begin;
-            while (buf[end] != 0)
-                end++;
-            try {
-                names[i] = new String(buf, begin, end - begin, "UTF-8");
-            } catch (UnsupportedEncodingException e) {}
-            begin = end + 1;
-        }
-
-        selectedProgramIndexes = new boolean[n];
+        String[] names = core_list_programs();
+        selectedProgramIndexes = new boolean[names.length];
         
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Select Programs");
@@ -1447,7 +1433,7 @@ public class Free42Activity extends Activity {
     private native boolean core_timeout3(int repaint);
     private native boolean core_keyup();
     private native boolean core_powercycle();
-    private native int core_list_programs(byte[] buf);
+    private native String[] core_list_programs();
     //private native int core_program_size(int prgm_index);
     private native boolean core_export_programs(int[] indexes);
     private native void core_import_programs();
