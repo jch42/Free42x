@@ -18,6 +18,7 @@
 #include <stdlib.h>
 
 #include "core_globals.h"
+#include "core_ebml.h"
 #include "core_commands2.h"
 #include "core_commands4.h"
 #include "core_display.h"
@@ -659,7 +660,7 @@ arg_struct input_arg;
 int baseapp = 0;
 
 /* Random number generator */
-phloat random_number;
+int8 random_number_low, random_number_high;
 
 /* NORM & TRACE mode: number waiting to be printed */
 int deferred_print = 0;
@@ -716,7 +717,6 @@ static int array_count;
 static int array_list_capacity;
 static void **array_list;
 
-
 static bool read_int(int *n);
 static bool write_int(int n);
 static bool read_int4(int4 *n);
@@ -726,7 +726,6 @@ static bool write_bool(bool n);
 
 static bool array_list_grow();
 static int array_list_search(void *array);
-static bool persist_vartype(vartype *v);
 static bool unpersist_vartype(vartype **v, bool padded);
 static void update_label_table(int prgm, int4 pc, int inserted);
 static void invalidate_lclbls(int prgm_index);
@@ -761,101 +760,6 @@ static int array_list_search(void *array) {
             return i;
     return -1;
 }
-
-static bool persist_vartype(vartype *v) {
-    if (v == NULL) {
-        int type = TYPE_NULL;
-        return shell_write_saved_state(&type, sizeof(int));
-    }
-    switch (v->type) {
-        case TYPE_REAL: {
-            if (!shell_write_saved_state(v, sizeof(int)))
-                return false;
-            vartype_real *r = (vartype_real *) v;
-            return shell_write_saved_state(&r->x, sizeof(phloat));
-        }
-        case TYPE_COMPLEX: {
-            if (!shell_write_saved_state(v, sizeof(int)))
-                return false;
-            vartype_complex *c = (vartype_complex *) v;
-            return shell_write_saved_state(&c->re, 2 * sizeof(phloat));
-        }
-        case TYPE_STRING:
-            return shell_write_saved_state(v, sizeof(vartype_string));
-        case TYPE_REALMATRIX: {
-            matrix_persister mp;
-            vartype_realmatrix *rm = (vartype_realmatrix *) v;
-            mp.type = rm->type;
-            mp.rows = rm->rows;
-            mp.columns = rm->columns;
-            int4 size = mp.rows * mp.columns;
-            bool must_write = true;
-            if (rm->array->refcount > 1) {
-                int n = array_list_search(rm->array);
-                if (n == -1) {
-                    // A negative row count signals a new shared matrix
-                    mp.rows = -mp.rows;
-                    if (!array_list_grow())
-                        return false;
-                    array_list[array_count++] = rm->array;
-                } else {
-                    // A zero row count means this matrix shares its data
-                    // with a previously written matrix
-                    mp.rows = 0;
-                    mp.columns = n;
-                    must_write = false;
-                }
-            }
-            if (!shell_write_saved_state(&mp, sizeof(matrix_persister)))
-                return false;
-            if (must_write) {
-                if (!shell_write_saved_state(rm->array->data,
-                                            size * sizeof(phloat)))
-                    return false;
-                if (!shell_write_saved_state(rm->array->is_string, size))
-                    return false;
-            }
-            return true;
-        }
-        case TYPE_COMPLEXMATRIX: {
-            matrix_persister mp;
-            vartype_complexmatrix *cm = (vartype_complexmatrix *) v;
-            mp.type = cm->type;
-            mp.rows = cm->rows;
-            mp.columns = cm->columns;
-            int4 size = mp.rows * mp.columns;
-            bool must_write = true;
-            if (cm->array->refcount > 1) {
-                int n = array_list_search(cm->array);
-                if (n == -1) {
-                    // A negative row count signals a new shared matrix
-                    mp.rows = -mp.rows;
-                    if (!array_list_grow())
-                        return false;
-                    array_list[array_count++] = cm->array;
-                } else {
-                    // A zero row count means this matrix shares its data
-                    // with a previously written matrix
-                    mp.rows = 0;
-                    mp.columns = n;
-                    must_write = false;
-                }
-            }
-            if (!shell_write_saved_state(&mp, sizeof(matrix_persister)))
-                return false;
-            if (must_write) {
-                if (!shell_write_saved_state(cm->array->data,
-                                            2 * size * sizeof(phloat)))
-                    return false;
-            }
-            return true;
-        }
-        default:
-            /* Should not happen */
-            return true;
-    }
-}
-
 
 // A few declarations to help unpersist_vartype get the offsets right,
 // in the case it needs to convert the state file.
@@ -1147,39 +1051,31 @@ static bool persist_globals() {
     array_list_capacity = 0;
     array_list = NULL;
     bool ret = false;
+	
+	// persistance of register
+    if (!ebmlWriteReg(reg_x,'x'))
+        goto done;
+    if (!ebmlWriteReg(reg_y,'y'))
+        goto done;
+    if (!ebmlWriteReg(reg_z,'z'))
+        goto done;
+    if (!ebmlWriteReg(reg_t,'t'))
+        goto done;
+    if (!ebmlWriteReg(reg_lastx,'l'))
+        goto done;
+    if (!ebmlWriteAlphaReg())
+        goto done;
 
-    if (!persist_vartype(reg_x))
-        goto done;
-    if (!persist_vartype(reg_y))
-        goto done;
-    if (!persist_vartype(reg_z))
-        goto done;
-    if (!persist_vartype(reg_t))
-        goto done;
-    if (!persist_vartype(reg_lastx))
-        goto done;
-    if (!write_int(reg_alpha_length))
-        goto done;
-    if (!shell_write_saved_state(reg_alpha, 44))
-        goto done;
-    if (!write_int4(mode_sigma_reg))
-        goto done;
-    if (!write_int(mode_goose))
-        goto done;
-    if (!write_bool(mode_time_clktd))
-        goto done;
-    if (!write_bool(mode_time_clk24))
-        goto done;
-    if (!shell_write_saved_state(&flags, sizeof(flags_struct)))
-        goto done;
+	// persistance of variables
     if (!write_int(vars_count))
         goto done;
-    for (i = 0; i < vars_count; i++)
-        if (!shell_write_saved_state(vars + i, sizeof(var_struct_32bit)))
-            goto done;
-    for (i = 0; i < vars_count; i++)
-        if (!persist_vartype(vars[i].value))
-            goto done;
+	for (i = 0; i < vars_count; i++) {
+		if (!ebmlWriteVar(&vars[i])) {
+			goto done;
+		}
+	}
+
+	// persistance of programs
     if (!write_int(prgms_count))
         goto done;
     for (i = 0; i < prgms_count; i++)
@@ -1188,34 +1084,54 @@ static bool persist_globals() {
     for (i = 0; i < prgms_count; i++)
         if (!shell_write_saved_state(prgms[i].text, prgms[i].size))
             goto done;
-    if (!write_int(current_prgm))
+
+	// persstance of core state
+    if (!ebmlWriteElInt(EL_mode_sigma_reg, mode_sigma_reg))
         goto done;
-    if (!write_int4(pc))
+    if (!ebmlWriteElInt(EL_mode_goose, mode_goose))
         goto done;
-    if (!write_int(prgm_highlight_row))
+    if (!ebmlWriteElBool(EL_mode_time_clktd, mode_time_clktd))
         goto done;
-    if (!write_int(varmenu_length))
+    if (!ebmlWriteElBool(EL_mode_time_clk24, mode_time_clk24))
         goto done;
-    if (!shell_write_saved_state(varmenu, 7))
+	if (!ebmlWriteElString(EL_flags, sizeof(flags_struct), flags.farray))
         goto done;
-    if (!write_int(varmenu_rows))
+
+    if (!ebmlWriteElInt(EL_current_prgm, current_prgm))
         goto done;
-    if (!write_int(varmenu_row))
+    if (!ebmlWriteElInt(EL_pc, pc))
         goto done;
-    if (!shell_write_saved_state(varmenu_labellength, 6 * sizeof(int)))
+    if (!ebmlWriteElInt(EL_prgm_highlight_row, prgm_highlight_row))
         goto done;
-    if (!shell_write_saved_state(varmenu_labeltext, 42))
+
+	if (!ebmlWriteElString(EL_varmenu, sizeof(varmenu), varmenu))
         goto done;
-    if (!write_int(varmenu_role))
+    if (!ebmlWriteElInt(EL_varmenu_rows, varmenu_rows))
         goto done;
-    if (!write_int(rtn_sp))
+    if (!ebmlWriteElInt(EL_varmenu_row, varmenu_row))
         goto done;
-    if (!shell_write_saved_state(&rtn_prgm, MAX_RTNS * sizeof(int)))
+	for (i = 0; i < 6; i++) {
+		if (!ebmlWriteElString(EL_varmenu_label + i, varmenu_labellength[i], varmenu_labeltext[i])) {
+			goto done;
+		}
+	}
+    if (!ebmlWriteElInt(EL_varmenu_role, varmenu_role))
         goto done;
-    if (!shell_write_saved_state(&rtn_pc, MAX_RTNS * sizeof(int4)))
+
+    if (!ebmlWriteElInt(EL_rtn_sp, rtn_sp))
         goto done;
+	for (i = 0; i < MAX_RTNS; i++) {
+		if (!ebmlWriteElInt(EL_rtn_prgm + i, rtn_prgm[i])) {
+			goto done;
+		}
+	}
+	for (i = 0; i < MAX_RTNS; i++) {
+		if (!ebmlWriteElInt(EL_rtn_pc + i, rtn_pc[i])) {
+			goto done;
+		}
+	}
 #ifdef IPHONE
-    if (!write_bool(off_enable_flag))
+    if (!ebmlWriteElBool(EL_off_enable_flag, off_enable_flag))
         goto done;
 #endif
     ret = true;
@@ -2223,6 +2139,14 @@ static bool write_int4(int4 n) {
     return shell_write_saved_state(&n, sizeof(int4));
 }
 
+static bool read_int8(int8 *n) {
+    return shell_read_saved_state(n, sizeof(int8)) == sizeof(int8);
+}
+
+static bool write_int8(int8 n) {
+    return shell_write_saved_state(&n, sizeof(int8));
+}
+
 static bool read_bool(bool *b) {
     if (state_bool_is_int) {
         int t;
@@ -2410,8 +2334,16 @@ bool load_state(int4 ver) {
 
     if (!read_int(&baseapp)) return false;
 
-    if (!read_phloat(&random_number))
-        return false;
+    if (ver < 22) {
+        phloat random_number;
+        if (!read_phloat(&random_number))
+            return false;
+        random_number_low = to_int8(random_number * 1000000) * 10 + 1;
+        random_number_high = 0;
+    } else {
+        if (!read_int8(&random_number_low)) return false;
+        if (!read_int8(&random_number_high)) return false;
+    }
 
     if (ver < 3) {
         deferred_print = 0;
@@ -2483,91 +2415,209 @@ void save_state() {
     /* The shell has written the initial magic and version numbers,
      * and the shell state, before we got called.
      */
-
+int i;
     #ifdef BCD_MATH
         if (!write_bool(true)) return;
     #else
         if (!write_bool(false)) return;
     #endif
-    if (!write_bool(core_settings.matrix_singularmatrix)) return;
-    if (!write_bool(core_settings.matrix_outofrange)) return;
-    if (!write_bool(core_settings.auto_repeat)) return;
-    if (!write_bool(core_settings.enable_ext_accel)) return;
-    if (!write_bool(core_settings.enable_ext_locat)) return;
-    if (!write_bool(core_settings.enable_ext_heading)) return;
-    if (!write_bool(core_settings.enable_ext_time)) return;
-    if (!write_bool(core_settings.enable_ext_hpil)) return;
-	if (!persist_hpil()) return;
-    if (!write_bool(mode_clall)) return;
-    if (!write_bool(mode_command_entry)) return;
-    if (!write_bool(mode_number_entry)) return;
-    if (!write_bool(mode_alpha_entry)) return;
-    if (!write_bool(mode_shift)) return;
-    if (!write_int(mode_appmenu)) return;
-    if (!write_int(mode_plainmenu)) return;
-    if (!write_bool(mode_plainmenu_sticky)) return;
-    if (!write_int(mode_transientmenu)) return;
-    if (!write_int(mode_alphamenu)) return;
-    if (!write_int(mode_commandmenu)) return;
-    if (!write_bool(mode_running)) return;
-    if (!write_bool(mode_varmenu)) return;
-    if (!write_bool(mode_updown)) return;
-    if (!write_bool(mode_getkey)) return;
+	if (!ebmlWriteElBool(EL_core_matrix_singular, core_settings.matrix_singularmatrix)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_core_matrix_outofrange, core_settings.matrix_outofrange))  {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_core_auto_repeat, core_settings.auto_repeat)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_core_enable_ext_accel, core_settings.enable_ext_accel)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_core_enable_ext_locat, core_settings.enable_ext_locat)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_core_enable_ext_heading, core_settings.enable_ext_heading)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_core_enable_ext_time, core_settings.enable_ext_time)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_core_enable_ext_hpil, core_settings.enable_ext_hpil)) {
+		return;
+	}
 
-    if (!write_phloat(entered_number)) return;
-    if (!write_int(entered_string_length)) return;
-    if (!shell_write_saved_state(entered_string, 15)) return;
+	if (!ebmlWriteElBool(EL_mode_clall, mode_clall)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_mode_command_entry, mode_command_entry)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_mode_number_entry, mode_number_entry)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_mode_alpha_entry, mode_alpha_entry)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_mode_shift, mode_shift)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_mode_appmenu, mode_appmenu)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_mode_plainmenu, mode_plainmenu)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_mode_plainmenu_sticky, mode_plainmenu_sticky)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_mode_transientmenu, mode_transientmenu)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_mode_alphamenu, mode_alphamenu)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_mode_commandmenu, mode_commandmenu)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_mode_running, mode_running)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_mode_varmenu, mode_varmenu)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_mode_updown, mode_updown)) {
+		return;
+	}
+	if (!ebmlWriteElBool(EL_mode_getkey, mode_getkey)) {
+		return;
+	}
 
-    if (!write_int(pending_command)) return;
-    if (!write_arg(&pending_command_arg)) return;
-    if (!write_int(xeq_invisible)) return;
+	if (!ebmlWriteElPhloat(EL_entered_number, &entered_number)) {
+		return;
+	}
+	if (!ebmlWriteElString(EL_entered_string, entered_string_length, entered_string)) {
+		return;
+	}
 
-    if (!write_int(incomplete_command)) return;
-    if (!write_int(incomplete_ind)) return;
-    if (!write_int(incomplete_alpha)) return;
-    if (!write_int(incomplete_length)) return;
-    if (!write_int(incomplete_maxdigits)) return;
-    if (!write_int(incomplete_argtype)) return;
-    if (!write_int(incomplete_num)) return;
-    if (!shell_write_saved_state(incomplete_str, 7)) return;
-    if (!write_int4(incomplete_saved_pc)) return;
-    if (!write_int4(incomplete_saved_highlight_row)) return;
+	if (!ebmlWriteElInt(EL_pending_command, pending_command)) {
+		return;
+	}
+	if (!ebmlWriteElArg(EL_pending_command_arg, &pending_command_arg)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_xeq_invisible, xeq_invisible)) {
+		return;
+	}
 
-    if (!shell_write_saved_state(cmdline, 100)) return;
-    if (!write_int(cmdline_length)) return;
-    if (!write_int(cmdline_row)) return;
+	if (!ebmlWriteElInt(EL_incomplete_command, incomplete_command)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_incomplete_ind, incomplete_ind)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_incomplete_alpha, incomplete_alpha)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_incomplete_length, incomplete_length)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_incomplete_maxdigits, incomplete_maxdigits)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_incomplete_argtype, incomplete_argtype)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_incomplete_num, incomplete_num)) {
+		return;
+	}
+    if (!ebmlWriteElString(EL_incomplete_str, 7, incomplete_str)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_incomplete_saved_pc, incomplete_saved_pc)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_incomplete_saved_highlight_row, incomplete_saved_highlight_row)) {
+		return;
+	}
 
-    if (!write_int(matedit_mode)) return;
-    if (!shell_write_saved_state(matedit_name, 7)) return;
-    if (!write_int(matedit_length)) return;
-    if (!persist_vartype(matedit_x)) return;
-    if (!write_int4(matedit_i)) return;
-    if (!write_int4(matedit_j)) return;
-    if (!write_int(matedit_prev_appmenu)) return;
+	if (!ebmlWriteElString(EL_cmdline, cmdline_length, cmdline)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_cmdline_row, cmdline_row)) {
+		return;
+	}
 
-    if (!shell_write_saved_state(input_name, 11)) return;
-    if (!write_int(input_length)) return;
-    if (!write_arg(&input_arg)) return;
+	if (!ebmlWriteElInt(EL_matedit_mode, matedit_mode)) {
+		return;
+	}
+	if (!ebmlWriteElString(EL_matedit_name, matedit_length, matedit_name)) {
+		return;
+	}
+	if (!ebmlWriteReg(matedit_x,'m')) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_matedit_i, matedit_i)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_matedit_j, matedit_j)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_matedit_prev_appmenu, matedit_prev_appmenu)) {
+		return;
+	}
 
-    if (!write_int(baseapp)) return;
+	if (!ebmlWriteElString(EL_input_name, input_length, input_name)) {
+		return;
+	}
+	if (!ebmlWriteElArg(EL_input_arg, &input_arg)) {
+		return;
+	}
 
-    if (!write_phloat(random_number)) return;
+	if (!ebmlWriteElInt(EL_baseapp, baseapp)) {
+		return;
+	}
 
-    if (!write_int(deferred_print)) return;
+	if (!ebmlWriteElInt(EL_random_number1 , (int)(random_number_low & 0xffff))) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_random_number2 , (int)((random_number_low >> 32) & 0xffff))) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_random_number3 , (int)(random_number_high & 0xffff))) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_random_number4 , (int)((random_number_high >> 32) & 0xffff))) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_deferred_print, deferred_print)) {
+		return;
+	}
 
-    if (!write_int(keybuf_head)) return;
-    if (!write_int(keybuf_tail)) return;
-    if (!shell_write_saved_state(keybuf, 16 * sizeof(int))) return;
+	if (!ebmlWriteElInt(EL_keybuf_head, keybuf_head)) {
+		return;
+	}
+	if (!ebmlWriteElInt(EL_keybuf_tail, keybuf_tail)) {
+		return;
+	}
+	for (i = 0; i < 16; i++) {
+		if (!ebmlWriteElInt(EL_keybuf + i, keybuf[i])) {
+			return;
+		}
+	}
 
-    if (!persist_display())
+	if (!persist_display()) {
         return;
-    if (!persist_globals())
+	}
+    
+	if (!persist_globals()) {
         return;
-    if (!persist_math())
+	}
+	if (!persist_math()) {
         return;
-
-    if (!write_int4(FREE42_MAGIC)) return;
-    if (!write_int4(FREE42_VERSION)) return;
+	}
+	if (!persist_hpil()) {
+		return;
+	}
 }
 
 void hard_reset(int bad_state_file) {
@@ -2613,7 +2663,8 @@ void hard_reset(int bad_state_file) {
     matedit_mode = 0;
     input_length = 0;
     baseapp = 0;
-    random_number = shell_random_seed();
+    random_number_low = 0;
+    random_number_high = 0;
 
     flags.f.f00 = flags.f.f01 = flags.f.f02 = flags.f.f03 = flags.f.f04 = 0;
     flags.f.f05 = flags.f.f06 = flags.f.f07 = flags.f.f08 = flags.f.f09 = 0;
