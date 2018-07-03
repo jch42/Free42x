@@ -1085,7 +1085,7 @@ static bool persist_globals() {
         if (!shell_write_saved_state(prgms[i].text, prgms[i].size))
             goto done;
 
-	// persstance of core state
+	// persistance of core state
     if (!ebmlWriteElInt(EL_mode_sigma_reg, mode_sigma_reg))
         goto done;
     if (!ebmlWriteElInt(EL_mode_goose, mode_goose))
@@ -1111,7 +1111,7 @@ static bool persist_globals() {
     if (!ebmlWriteElInt(EL_varmenu_row, varmenu_row))
         goto done;
 	for (i = 0; i < 6; i++) {
-		if (!ebmlWriteElString(EL_varmenu_label + i, varmenu_labellength[i], varmenu_labeltext[i])) {
+		if (!ebmlWriteElString(EL_varmenu_label + i * 16, varmenu_labellength[i], varmenu_labeltext[i])) {
 			goto done;
 		}
 	}

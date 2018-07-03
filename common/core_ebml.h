@@ -20,218 +20,448 @@
 #ifndef CORE_EBML_H
 #define CORE_EBML_H 1
 
-/* base elements */
-#define EL_ID_COUNT			0x11	/* objects (in variables, programs, params) counter */
-									/* id, val */
-#define EL_ID_NAME			0x12	/* name of variables and platform specific params */
+/* schema (kindof...)
+ *
+ * Header
+ *
+ *	<element name="EBMLFree42" path=1*1(\EBMLFree42) id="0x0x4672ee420" minOccurs="1" maxOccurs="1" type="master element"/>
+ *	<documentation This element is the Free42 top master element/>
+ *
+ *		<element name="EBMLFree42Desc" path=1*1(\EBMLFree42\EBMLFree42Desc) id="0x1013" minOccurs="1" maxOccurs="1" type="string"/>
+ *		<documentation This element is the Free42 description/>
+ *
+ *		<element name="EBMLFree42Version" path=1*1(\EBMLFree42\EBMLFree42Version) id="0x1021" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *		<documentation This element is the Free42 specs used to create the document/>
+ *
+ *		<element name="EBMLFree42ReadVersion" path=1*1(\EBMLFree42\EBMLFree42ReadVersion) id="0x1022" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *		<documentation This element is the minimum version required to be able to read this document/>
+ *
+ * Shell
+ *
+ *		<element name="EBMLFree42Shell" path=1*1(\EBMLFree42\EBMLFree42Shell) id="0x200000" minOccurs="1" maxOccurs="1" type="master element"/>
+ *		<documentation This element is the shell state master element and contains shell specific elements/>
+ *
+ *			<element name="EBMLFree42ShellOS" path=1*1(\EBMLFree42\EBMLFree42Shell\EBMLFree42ShellOS) id="0x200013" minOccurs="1" maxOccurs="1" type="string"/>
+ *			<documentation This element is the shell operating system generic short name/>
+ *
+ *			<element name="EBMLFree42ShellVersion" path=1*1(\EBMLFree42\EBMLFree42Shell\EBMLFree42ShellVersion) id="0x200021" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *			<documentation This element is the shell state specs used to create the shell state master element/>
+ *
+ *			<element name="EBMLFree42ShellReadVersion" path=1*1(\EBMLFree42\EBMLFree42Shell\EBMLFree42ShellReadVersion) id="0x200031" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *			<documentation This element is the minimum version to read the shell state master element/>
+ *
+ * Core
+ *
+ *		<element name="EBMLFree42Core" path=1*1(\EBMLFree42\EBMLFree42Core) id="0x300000" minOccurs="1" maxOccurs="1" type="master element"/>
+ *		<documentation This element contains all core state elements excluding variables and programs/>
+ *
+ *			<element name="EBMLFree42CoreVersion" path=1*1(\EBMLFree42\EBMLFree42Core\EBMLFree42CoreVersion) id="0x300011" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *			<documentation This element is the core state specs used to create the core state master element/>
+ *
+ *			<element name="EBMLFree42CoreReadVersion" path=1*1(\EBMLFree42\EBMLFree42Core\EBMLFree42CoreReadVersion) id="0x300021" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *			<documentation This element is the minimum version to read the core state master element/>
+ *
+ * Variables
+ *
+ *		<element name="EBMLFree42Vars" path=1*1(\EBMLFree42\EBMLFree42Vars) id="0x4000" minOccurs="1" maxOccurs="1" type="master element"/>
+ *		<documentation This element contains all explicit variables/>
+ *
+ *			<element name="EBMLFree42VarsVersion" path=1*1(\EBMLFree42\EBMLFree42Vars\EBMLFree42VarsVersion) id="0x4011" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *			<documentation This element is the vars specs used to create the vars master element/>
+ *
+ *			<element name="EBMLFree42VarsReadVersion" path=1*1(\EBMLFree42\EBMLFree42Vars\EBMLFree42VarsReadVersion) id="0x4021" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *			<documentation This element is the minimum version to read the vars master element/>
+ *
+ *			<element name="EBMLFree42VarsCount" path=1*1(\EBMLFree42\EBMLFree42Vars\EBMLFree42VarsCount) id="0x4031" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *			<documentation This element is the number of variables in the vars master element/>
+ *
+ * Programs
+ *
+ *		<element name="EBMLFree42Progs" path=1*1(\EBMLFree42\EBMLFree42Progs) id="0x6000" minOccurs="1" maxOccurs="1" type="master element"/>
+ *		<documentation This element contains all explicit variables/>
+ *
+ *			<element name="EBMLFree42ProgsVersion" path=1*1(\EBMLFree42\EBMLFree42Progs\EBMLFree42ProgsVersion) id="0x6011" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *			<documentation This element is the vats specs used to create the Progs master element/>
+ *
+ *			<element name="EBMLFree42ProgsReadVersion" path=1*1(\EBMLFree42\EBMLFree42Progs\EBMLFree42ProgsReadVersion) id="0x6021" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *			<documentation This element is the minimum version to read the Progs master element/>
+ *
+ *			<element name="EBMLFree42ProgsCount" path=1*1(\EBMLFree42\EBMLFree42Progs\EBMLFree42ProgsCount) id="0x6031" minOccurs="1" maxOccurs="1" type="vinteger"/>
+ *			<documentation This element is the number of variables in the Progs master element/>
+ *
+ * Elements coding
+ *
+ *	0 > Master element
+ *	1 > vint
+ *	2 > integer
+ *	3 > string
+ *	4 > binary
+ *	5 > boolean
+ *
+ * Variables master elements
+ *
+ *	<element name=EBMLFree42VarNull path=*(\EBMLFree42\EBMLFree42Core\EBMLFree42VarNull
+ *										/ \EBMLFree42\EBMLFree42Vars\EBMLFree42VarNull) id="0x400" type="master element"/>
+ *
+ *	<element name=EBMLFree42VarReal path=*(\EBMLFree42\EBMLFree42Core\EBMLFree42VarReal
+ *										/ \EBMLFree42\EBMLFree42Vars\EBMLFree42VarReal) id="0x410" type="master element"/>
+ *
+ *	<element name=EBMLFree42VarCpx  path=*(\EBMLFree42\EBMLFree42Core\EBMLFree42VarCpx
+ *										/ \EBMLFree42\EBMLFree42Vars\EBMLFree42VarCpx ) id="0x420" type="master element"/>
+ *
+ *	<element name=EBMLFree42VarRMtx path=*(\EBMLFree42\EBMLFree42Core\EBMLFree42VarRMtx
+ *										/ \EBMLFree42\EBMLFree42Vars\EBMLFree42VarRMtx) id="0x430" type="master element"/>
+ *
+ *	<element name=EBMLFree42VarCMtx path=*(\EBMLFree42\EBMLFree42Core\EBMLFree42VarCMtx
+ *										/ \EBMLFree42\EBMLFree42Vars\EBMLFree42VarCMtx) id="0x440" type="master element"/>
+ *
+ *	<element name=EBMLFree42VarStr  path=*(\EBMLFree42\EBMLFree42Core\EBMLFree42VarStr
+ *										/ \EBMLFree42\EBMLFree42Vars\EBMLFree42VarStr ) id="0x450" type="master element"/>
+ *
+ * variables global elements
+ *
+ *	<element name=EBMLFree42VarSize path=1*1(EBMLFree42VarNull\EBMLFree42VarSize
+ *										   / EBMLFree42VarReal\EBMLFree42VarSize
+ *										   / EBMLFree42VarCpx\EBMLFree42VarSize
+ *										   / EBMLFree42VarRMtx\EBMLFree42VarSize
+ *										   / EBMLFree42VarCMtx\EBMLFree42VarSize
+ *										   / EBMLFree42VarStr\EBMLFree42VarSize ) id ="0x511" type="vint"/>
+ *
+ *	<element name=EBMLFree42VarName path=1*1(EBMLFree42VarNull\EBMLFree42VarName
+ *										   / EBMLFree42VarReal\EBMLFree42VarName
+ *										   / EBMLFree42VarCpx\EBMLFree42VarName
+ *										   / EBMLFree42VarRMtx\EBMLFree42VarName
+ *										   / EBMLFree42VarCMtx\EBMLFree42VarName
+ *										   / EBMLFree42VarStr\EBMLFree42VarName ) id ="0x523" type="string"/>
+ *
+ *	<element name=EBMLFree42VarRows path=1*1(EBMLFree42VarRMtx\EBMLFree42VarRows
+ *										   / EBMLFree42VarCMtx\EBMLFree42VarRows ) id ="0x532" type="integer"/>
+ *
+ *	<element name=EBMLFree42VarColumns path=1*1(EBMLFree42VarRMtx\EBMLFree42VarColumns
+ *											  / EBMLFree42VarCMtx\EBMLFree42VarColumns ) id ="0x542" type="integer"/>
+ *
+ *	<element name=EBMLFree42VarPhloat path=1*1(EBMLFree42VarReal\EBMLFree42VarPhloat
+ *											 / EBMLFree42VarCpx\EBMLFree42VarPhloat
+ *											 / EBMLFree42VarRMtx\EBMLFree42VarPhloat
+ *											 / EBMLFree42VarCMtx\EBMLFree42VarPhloat ) id ="0x584" type="binary"/>
+ *
+ *	<element name=EBMLFree42VarStr path=1*1(EBMLFree42VarRMtx\EBMLFree42VarStr
+ *										  / EBMLFree42VarString\EBMLFree42VarStr ) id ="0x583" type="string"/>
+ *
+ * programs elements
+ *
+ *	<element name="EBMLFree42Prog" path=1*1(\EBMLFree42\EBMLFree42Progs\EBMLFree42Prog) id="0x600" minOccurs="1" maxOccurs="1" type="master element"/>
+ *
+ *		<element name="EBMLFree42ProgSize" path=1*1(EBMLFree42Prog\EBMLFree42ProgSize) id="0x611" minOccurs="1" maxOccurs="1" type="vint"/>
+ *
+ *		<element name="EBMLFree42ProgName" path=1*1(EBMLFree42Progs\EBMLFree42ProgName) id="0x623" minOccurs="1" maxOccurs="1" type="string"/>
+ *
+ *		<element name="EBMLFree42ProgData" path=1*1(EBMLFree42Progs\EBMLFree42ProgData) id="0x634" minOccurs="1" maxOccurs="1" type="binary"/>
+ *
+ */
+
+
+
+/*
+ * types for base elements Ids
+ * combine with each element Id's (4 lsb)
+ */
+#define EBMLFree42MasterElement			0x00			/* master, no value														*/
+#define EBMLFree42VIntElement			0x01			/* vint, value encoded as variable size integer							*/
+#define EBMLFree42IntElement			0x02			/* signed int, size in bytes as vint, value stored in little endianness */  
+#define EBMLFree42StringElement			0x03			/* string, size in bytes as vint, ascii	string							*/
+#define EBMLFree42PhloatElement			0x04			/* phloat as binary, size in bytes as vint, value in little endianess	*/
+#define EBMLFree42BooleanElement		0x05			/* boolean, value encoded as variable size integer (0 or 1)				*/
+
+/*
+ * Master document header
+ */
+#define EBMLFree42						0x4672ee420		/* Free42 top master element, vint		*/
+#define EBMLFree42Desc					0x1013			/* Free42 document description, string	*/
+#define EBMLFree42Version				0x1021			/* specs used to create the document	*/
+#define EBMLFree42ReadVersion			0x1031			/* minimum version to read the document	*/
+
+/*
+ * variables sub documents
+ * All types derived from EBMLFree42VarNull + vartype << 4
+ */
+#define EBMLFree42VarNull				0x400			/* master elements */
+#define EBMLFree42VarReal				0x410
+#define EBMLFree42VarCpx				0x420
+#define EBMLFree42VarRMtx				0x430
+#define EBMLFree42VarCMtx				0x440
+#define EBMLFree42VarStr				0x450
+
+/*
+ * variables common elements
+ */
+#define EBMLFree42VarSize				0x511			/* size of subdocument, vint	*/
+#define EBMLFree42VarName				0x523			/* variable's name, string		*/
+
+/*
+ * matrix variables common elements
+ */
+#define	EBMLFree42VarRows				0x532			/* matrix's rows, has to be signed int to cope with shadows matrix int	*/
+#define EBMLFree42VarColumns			0x542			/* matrix's columns, signed int to keep same type as rows, int			*/ 
+
+/*
+ * variables elements Id's
+ */
+#define EBMLFree42VarNoType				0x580			/* untyped						*/
+#define EBMLFree42VarString				0x583			/* type EBMLFree42StringElement	*/
+#define EBMLFree42VarPhloat				0x584			/* type EBMLFree42PhloatElement	*/
+
+/*
+ * variables document
+ */
+#define EBMLFree42Vars					0x4000			/* master element, document containing explicit variables	*/
+#define EBMLFree42VarsVersion			0x4011			/* element, version used to create this document, vint		*/
+#define EBMLFree42VarsReadVersion		0x4021			/* element, minimum version to read this document, vint		*/
+#define EBMLFree42VarsCount				0x4031			/* element, number of objects in variables document, vint	*/
+
+/*
+ * args common elements
+ */
+#define EBMLFree42ArgSize				0x2011			/* size of argument, vint						*/
+#define EBMLFree42ArgType				0x2021			/* type of argument, vint						*/
+#define EBMLFree42ArgLength				0x2031			/* length in arg struct, vint					*/
+#define EBMLFree42ArgTarget				0x2042			/* target in arg struct, vint					*/
+#define EBMLFree42ArgVal				0x2050			/* val as union in arg struct, variable type	*/
+
+/*
+ * program element
+ */
+#define EBMLFree42Prog					0x600			/* master program subdocument	*/
+#define EBMLFree42ProgSize				0x611			/* size of subdocument			*/
+#define EBMLFree42ProgName				0x623			/* program name					*/
+#define EBMLFree42ProgData				0x633			/* program, as string			*/
+
+/*
+ * programs document
+ */
+#define EBMLFree42Progs					0x6000			/* Master element, document containing programs				*/
+#define EBMLFree42ProgsVersion			0x6011			/* Element, version used to create this document, vint		*/
+#define EBMLFree42ProgsReadVersion		0x6021			/* Element, minimum version to read this document, vint		*/
+#define EBMLFree42ProgsCount			0x6031			/* Element, number of programs in document, vint			*/
+
+/*
+ * core document
+ */
+#define EBMLFree42Core					0x3000			/* Master element, document containing core state		*/
+#define EBMLFree42CoreVersion			0x3011			/* Element, version used to create this document, vint	*/
+#define EBMLFree42CoreReadVersion		0x3021			/* Element, minimum version to read this document, vint	*/
+
+/*
+ * shell document
+ */
+#define EBMLFree42Shell					0x2000			/* Master element, document containing shel state		*/
+#define EBMLFree42ShellVersion			0x2011			/* Element, version used to create this document, vint	*/
+#define EBMLFree42ShellReadVersion		0x2021			/* Element, minimum version to read this document, vint	*/
+#define EBMLFree42ShellOS				0x2033			/* Element, OS name, string								*/
+
+/* id, val */
+
+/*#define EL_ID_NAME			0x12	/* name of variables and platform specific params */
 									/* id, len, val */
-#define EL_ID_PHLOAT		0x13	/* a phloat as a binary element */
+/*#define EL_ID_PHLOAT		0x13	/* a phloat as a binary element */
 									/* id, len, val */
-#define EL_ID_ALPHA			0x14	/* a string */
+/*#define EL_ID_ALPHA			0x14	/* a string */
 									/* id, len, val */
-#define EL_ID_PROGRAM		0x15	/* a program as a binary element */
+/*#define EL_ID_PROGRAM		0x15	/* a program as a binary element */
 									/* id, len, val */
 /* variables objects */
-#define EL_ID_VARBASE		0x20	/* based on variable data types + 0x20 */
-#define EL_ID_VARNULL		0x20	/* an empty var */
+/*#define EL_ID_VARBASE		0x20	/* based on variable data types + 0x20 */
+/*#define EL_ID_VARNULL		0x20	/* an empty var */
 									/* id, EL_ID_NAME */
-#define EL_ID_VARREAL		0x21	/* real */
+/*#define EL_ID_VARREAL		0x21	/* real */
 									/* id, EL_ID_NAME, EL_ID_PHLOAT */
-#define EL_ID_VARCPX		0x22	/* complex */
+/*#define EL_ID_VARCPX		0x22	/* complex */
 									/* id, EL_ID_NAME, EL_ID_PHLOAT, EL_ID_PHLOAT */
-#define EL_ID_VARREALMTX	0x23	/* real matrix */
+/*#define EL_ID_VARREALMTX	0x23	/* real matrix */
 								     /* id, EL_ID_NAME, rows, columns, EL_ID_[PHLOAT | ALPHA]s..  */
-#define EL_ID_VARCPXMTX		0x24	/* complex matrix */
+/*#define EL_ID_VARCPXMTX		0x24	/* complex matrix */
 									/* id, EL_ID_NAME, rows, columns, EL_ID_PHLOATs.. */
-#define EL_ID_VARSTRING		0x25	/* alpha */
+/*#define EL_ID_VARSTRING		0x25	/* alpha */
 									/* id, EL_ID_NAME, EL_ID_ALPHA */
 
-/* Global Parameters
- * 0x2xyyyy		x	 = object type	
- *				yyyy = object index
- * 0x25 Value	String
- * 0x29 Value	Binary
- * 0x21 Value	Phloat
- * 0x28 Value	Int
- * 0x2f Value	Bool
-*/
-#define EL_mode_sigma_reg		0x281001	// int
-#define EL_mode_goose			0x281002	// int
-#define EL_mode_time_clktd		0x2F1003	// bool
-#define EL_mode_time_clk24		0x2F1004	// bool
-#define EL_flags				0x251005	// string
+/* 
+ * global parameters
+ */
+#define EL_mode_sigma_reg		0x20010		// int
+#define EL_mode_goose			0x20020		// int
+#define EL_mode_time_clktd		0x20030		// bool
+#define EL_mode_time_clk24		0x20040		// bool
+#define EL_flags				0x20050		// string
 
-#define EL_current_prgm			0x281010	// int
-#define EL_pc					0x281011	// int
-#define EL_prgm_highlight_row	0x281012	// int
+#define EL_current_prgm			0x20080		// int
+#define EL_pc					0x20090		// int
+#define EL_prgm_highlight_row	0x200a0		// int
 
-#define EL_varmenu_label		0x281020	// string
-#define EL_varmenu_label0		0x251020	// string
-#define EL_varmenu_label1		0x251021	// string
-#define EL_varmenu_label2		0x251022	// string
-#define EL_varmenu_label3		0x251023	// string
-#define EL_varmenu_label4		0x251024	// string
-#define EL_varmenu_label5		0x251025	// string
-#define EL_varmenu				0x251026	// string
-#define EL_varmenu_rows			0x281027	// int
-#define EL_varmenu_row			0x281028	// int
-#define EL_varmenu_role			0x281029	// int
+#define EL_varmenu_label		0x20100		// string
+#define EL_varmenu_label0		0x20100		// string
+#define EL_varmenu_label1		0x20110		// string
+#define EL_varmenu_label2		0x20120		// string
+#define EL_varmenu_label3		0x20130		// string
+#define EL_varmenu_label4		0x20140		// string
+#define EL_varmenu_label5		0x20150		// string
+#define EL_varmenu				0x20180		// string
+#define EL_varmenu_rows			0x20190		// int
+#define EL_varmenu_row			0x201a0		// int
+#define EL_varmenu_role			0x201b0		// int
 
-#define EL_core_matrix_singular		0x2F1030	// bool
-#define EL_core_matrix_outofrange	0x2F1031	// bool
-#define EL_core_auto_repeat			0x2F1032	// bool
-#define EL_core_enable_ext_accel	0x2F1033	// bool
-#define EL_core_enable_ext_locat	0x2F1034	// bool
-#define EL_core_enable_ext_heading	0x2F1035	// bool
-#define EL_core_enable_ext_time		0x2F1036	// bool
-#define EL_core_enable_ext_hpil		0x2F1037	// bool
+#define EL_core_matrix_singular		0x20200		// bool
+#define EL_core_matrix_outofrange	0x20210		// bool
+#define EL_core_auto_repeat			0x20220		// bool
+#define EL_core_enable_ext_accel	0x20230		// bool
+#define EL_core_enable_ext_locat	0x20240		// bool
+#define EL_core_enable_ext_heading	0x20250		// bool
+#define EL_core_enable_ext_time		0x20260		// bool
+#define EL_core_enable_ext_hpil		0x20270		// bool
 
-#define EL_mode_clall				0x2F1040	// bool
-#define EL_mode_command_entry		0x2F1041	// bool
-#define EL_mode_number_entry		0x2F1042	// bool
-#define EL_mode_alpha_entry			0x2F1043	// bool
-#define EL_mode_shift				0x2F1044	// bool
-#define EL_mode_appmenu				0x281045	// int
-#define EL_mode_plainmenu			0x281046	// int
-#define EL_mode_plainmenu_sticky	0x2F1047	// bool
-#define EL_mode_transientmenu		0x281048	// int
-#define EL_mode_alphamenu			0x281049	// int
-#define EL_mode_commandmenu			0x28104A	// int
-#define EL_mode_running				0x2F104B	// bool
-#define EL_mode_varmenu				0x2F104C	// bool
-#define EL_mode_updown				0x2F104D	// bool
-#define EL_mode_getkey				0x2F104E	// bool
+#define EL_mode_clall				0x20300		// bool
+#define EL_mode_command_entry		0x20310		// bool
+#define EL_mode_number_entry		0x20320		// bool
+#define EL_mode_alpha_entry			0x20330		// bool
+#define EL_mode_shift				0x20340		// bool
+#define EL_mode_appmenu				0x20350		// int
+#define EL_mode_plainmenu			0x20360		// int
+#define EL_mode_plainmenu_sticky	0x20370		// bool
+#define EL_mode_transientmenu		0x20380		// int
+#define EL_mode_alphamenu			0x20390		// int
+#define EL_mode_commandmenu			0x203a0		// int
+#define EL_mode_running				0x203b0		// bool
+#define EL_mode_varmenu				0x203c0		// bool
+#define EL_mode_updown				0x203d0		// bool
+#define EL_mode_getkey				0x203e0		// bool
 
-#define EL_entered_number			0x211050	// phloat
-#define EL_entered_string			0x251051	// string
+#define EL_entered_number			0x20400		// phloat
+#define EL_entered_string			0x20410		// string
 
-#define EL_pending_command			0x281060	// int
-#define EL_pending_command_arg		0x261061	// arg struct, high level
-#define EL_xeq_invisible			0x281062	// int
+#define EL_pending_command			0x20480		// int
+#define EL_pending_command_arg		0x20490		// arg struct, high level
+#define EL_xeq_invisible			0x204a0		// int
 
-#define EL_incomplete_command		0x281063	// int
-#define EL_incomplete_ind			0x281064	// int
-#define EL_incomplete_alpha			0x281065	// int
-#define EL_incomplete_length		0x281066	// int
-#define EL_incomplete_maxdigits		0x281067	// int
-#define EL_incomplete_argtype		0x281068	// int
-#define EL_incomplete_num			0x281069	// int
-#define EL_incomplete_str			0x25106a	// string
-#define EL_incomplete_saved_pc		0x28106b	// int
-#define EL_incomplete_saved_highlight_row	0x28106c	// int
-#define EL_cmdline					0x25106d	// string
-#define EL_cmdline_row				0x28106e	// int
+#define EL_incomplete_command				0x20500		// int
+#define EL_incomplete_ind					0x20510		// int
+#define EL_incomplete_alpha					0x20520		// int
+#define EL_incomplete_length				0x20530		// int
+#define EL_incomplete_maxdigits				0x20540		// int
+#define EL_incomplete_argtype				0x20550		// int
+#define EL_incomplete_num					0x20560		// int
+#define EL_incomplete_str					0x20570		// string
+#define EL_incomplete_saved_pc				0x20580		// int
+#define EL_incomplete_saved_highlight_row	0x20590		// int
+#define EL_cmdline							0x205a0		// string
+#define EL_cmdline_row						0x205b0	// int
 
-#define EL_matedit_mode				0x281070	// int
-#define EL_matedit_name				0x251071	// string
-#define EL_matedit_i				0x281072	// int
-#define EL_matedit_j				0x281073	// int
-#define EL_matedit_prev_appmenu		0x281074	// int
+#define EL_matedit_mode				0x20600		// int
+#define EL_matedit_name				0x20610		// string
+#define EL_matedit_i				0x20620		// int
+#define EL_matedit_j				0x20630		// int
+#define EL_matedit_prev_appmenu		0x20640		// int
 
-#define EL_input_name				0x251080	// string
-#define EL_input_arg				0x261081	// arg struct, high level
+#define EL_input_name				0x20680		// string
+#define EL_input_arg				0x20681		// arg struct, high level
 
-#define EL_baseapp					0x281090	// int
+#define EL_baseapp					0x20700		// int
 
-#define EL_random_number1			0x281091	// int
-#define EL_random_number2			0x281092	// int
-#define EL_random_number3			0x281093	// int
-#define EL_random_number4			0x281094	// int
+#define EL_random_number1			0x20740		// int
+#define EL_random_number2			0x20750		// int
+#define EL_random_number3			0x20760		// int
+#define EL_random_number4			0x20770		// int
 
-#define EL_deferred_print			0x281095	// int
+#define EL_deferred_print			0x20800		// int
 
-#define EL_keybuf_head				0x281096	// int
-#define EL_keybuf_tail				0x281096	// int
+#define EL_keybuf_head				0x20880		// int
+#define EL_keybuf_tail				0x20890		// int
+#define EL_rtn_sp					0x208a0		// int, moved here to keep contiguous space for stacks
 
-#define EL_keybuf					0x2810a0	// int
-												// 0x2810ax enough place for 16 keys
+#define EL_keybuf					0x20900		// int
+												// 0x209x0 enough place for 16 keys
 
-
-#define EL_rtn_sp					0x2800FF	// int
-#define EL_rtn_prgm					0x280100	// int
-												// 0x2801xx enough place for 'unlimited' stack ?
-#define EL_rtn_pc					0x280200	// int
-												// 0x2802xx enough place for 'unlimited' stack ?
+#define EL_rtn_prgm					0x20a00		// int
+												// 0x20ax0 enough place for upto 32 level stack ?
+#define EL_rtn_pc					0x20c00		// int
+												// 0x20bx0 enough place for upto 32 level rtn zddresses ?
 /*
  * Math
  */
 
 // Solver
-#define El_solveVersion				0x282000	// int
-#define EL_solvePrgm_name			0x252001	// string
-#define EL_solveActive_prgm_name	0x252002	// string
-#define EL_solveKeep_running		0x282003	// int
-#define EL_solvePrev_prgm			0x282004	// int
-#define EL_solvePrev_pc				0x282005	// int
-#define EL_solveState				0x282006	// int
-#define EL_solveWhich				0x282007	// int
-#define EL_solveToggle				0x282009	// int
-#define EL_solveRetry_counter		0x28200a	// int
-#define EL_solveRetry_value			0x21200b	// phloat
-#define EL_solveX1					0x21200c	// phloat
-#define EL_solveX2					0x21200d	// phloat
-#define EL_solveX3					0x21200e	// phloat
-#define EL_solveFx1					0x21200f	// phloat
-#define EL_solveFx2					0x212010	// phloat
-#define EL_solvePrev_x				0x212011	// phloat
-#define EL_solveCurr_x				0x212012	// phloat
-#define EL_solveCurr_f				0x212013	// phloat
-#define EL_solveXm					0x212014	// phloat
-#define EL_solveFxm					0x212015	// phloat
-#define EL_solveLast_disp_time		0x282016	// int
-#define EL_solveShadow_name			0x252020	// string
-												// 0x252020..3f enough place for NUM_SHADOWS ?
-#define EL_solveShadow_value		0x212040	// phloat
-												// 0x252040..5f enough place for NUM_SHADOWS ?
+#define El_solveVersion				0x21000		// int
+#define EL_solvePrgm_name			0x21010		// string
+#define EL_solveActive_prgm_name	0x21020		// string
+#define EL_solveKeep_running		0x21030		// int
+#define EL_solvePrev_prgm			0x21040		// int
+#define EL_solvePrev_pc				0x21050		// int
+#define EL_solveState				0x21060		// int
+#define EL_solveWhich				0x21070		// int
+#define EL_solveToggle				0x21080		// int
+#define EL_solveRetry_counter		0x21090		// int
+#define EL_solveRetry_value			0x210a0		// phloat
+#define EL_solveX1					0x210b0		// phloat
+#define EL_solveX2					0x210c0		// phloat
+#define EL_solveX3					0x210d0		// phloat
+#define EL_solveFx1					0x210e0		// phloat
+#define EL_solveFx2					0x210f0		// phloat
+#define EL_solvePrev_x				0x21100		// phloat
+#define EL_solveCurr_x				0x21120		// phloat
+#define EL_solveCurr_f				0x21130		// phloat
+#define EL_solveXm					0x21140		// phloat
+#define EL_solveFxm					0x21150		// phloat
+#define EL_solveLast_disp_time		0x21160		// int
+#define EL_solveShadow_name			0x21400		// string
+												// 0x212x0 enough place for upto 32 NUM_SHADOWS ?
+#define EL_solveShadow_value		0x21800		// phloat
+												// 0x213x0 enough place for upto 32 NUM_SHADOWS ?
 
 // Integrator
-#define El_integVersion				0x282080	// int
-#define EL_integPrgm_name			0x252081	// string
-#define EL_integActive_prgm_name	0x252082	// string
-#define EL_integVar_name			0x252082	// string
-#define EL_integKeep_running		0x282083	// int
-#define EL_integPrev_prgm			0x282084	// int
-#define EL_integPrev_pc				0x282085	// int
-#define EL_integState				0x282086	// int
-#define EL_integLlim				0x212087	// phloat
-#define EL_integUlim				0x212088	// phloat
-#define EL_integAcc					0x212089	// phloat
-#define EL_integA					0x21208a	// phloat
-#define EL_integB					0x21208b	// phloat
-#define EL_integEps					0x21208c	// phloat
-#define EL_integN					0x28208e	// int
-#define EL_integM					0x28208f	// int
-#define EL_integI					0x282090	// int
-#define EL_integK					0x282091	// int
-#define EL_integH					0x212092	// phloat
-#define EL_integSum					0x212093	// phloat
-#define EL_integNsteps				0x282094	// int
-#define EL_integP					0x212095	// phloat
-#define EL_integT					0x212096	// phloat
-#define EL_integU					0x212097	// phloat
-#define EL_integPrev_int			0x212098	// phloat
-#define EL_integPrev_res			0x212099	// phloat
-#define EL_integC					0x2120c0	// phloat
-												// 0x2520c0..cf enough place for NUM_SHADOWS ?
-#define EL_integS					0x2100e0	// phloat
-												// 0x2520e0..ef enough place for NUM_SHADOWS ?
+#define El_integVersion				0x22000		// int
+#define EL_integPrgm_name			0x22010		// string
+#define EL_integActive_prgm_name	0x22020		// string
+#define EL_integVar_name			0x22030		// string
+#define EL_integKeep_running		0x22040		// int
+#define EL_integPrev_prgm			0x22050		// int
+#define EL_integPrev_pc				0x22060		// int
+#define EL_integState				0x22070		// int
+#define EL_integLlim				0x22080		// phloat
+#define EL_integUlim				0x22090		// phloat
+#define EL_integAcc					0x220a0		// phloat
+#define EL_integA					0x220b0		// phloat
+#define EL_integB					0x220c0		// phloat
+#define EL_integEps					0x220d0		// phloat
+#define EL_integN					0x220e0		// int
+#define EL_integM					0x220f0		// int
+#define EL_integI					0x22100		// int
+#define EL_integK					0x22110		// int
+#define EL_integH					0x22120		// phloat
+#define EL_integSum					0x22130		// phloat
+#define EL_integNsteps				0x22140		// int
+#define EL_integP					0x22150		// phloat
+#define EL_integT					0x22160		// phloat
+#define EL_integU					0x22170		// phloat
+#define EL_integPrev_int			0x22180		// phloat
+#define EL_integPrev_res			0x22190		// phloat
+#define EL_integC					0x22400		// phloat
+												// 0x2520c0..cf enough place for upto 32 ROMBK ?
+#define EL_integS					0x22800		// phloat
+												// 0x2520e0..ef enough place for upto 32 ROMBK ?
 
-
-#define EL_off_enable_flag		0x230300
+#define EL_off_enable_flag			0x22ff0		// only for iphone 
 
 /* Static size of elements, don't forget to adjust against header */
-#define EbmlPhloatSZ		16
-#define EbmlCharSZ			1
+#define EbmlPhloatSZ		19
+#define EbmlStringSZ		3
 
 bool ebmlWriteReg(vartype *v, char reg);
 bool ebmlWriteAlphaReg();
 bool ebmlWriteVar(var_struct *v);
 
-bool ebmlWriteElBool(int elId, bool val);
-bool ebmlWriteElInt(int elId, int val);
-bool ebmlWriteElString(int elId, int len, char *val);
-bool ebmlWriteElPhloat(int elId, phloat* p);
-bool ebmlWriteElArg(int elId, arg_struct *arg);
+bool ebmlWriteElBool(unsigned int elId, bool val);
+bool ebmlWriteElInt(unsigned int elId, int val);
+bool ebmlWriteElString(unsigned int elId, int len, char *val);
+bool ebmlWriteElPhloat(unsigned int elId, phloat* p);
+bool ebmlWriteElArg(unsigned int elId, arg_struct *arg);
 
 
 #endif
