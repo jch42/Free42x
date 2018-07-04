@@ -184,10 +184,6 @@ int i, size;
 		return false;
 	}
 
-    //if (!shell_write_saved_state(&size, sizeof(int))) return false;
-    //if (!shell_write_saved_state(&solve, sizeof(solve_state))) return false;
-
-    size = sizeof(integ_state);
     integ.version = INTEG_VERSION;
 	if (!ebmlWriteElInt(El_integVersion, integ.version)) {
 		return false;
@@ -275,8 +271,6 @@ int i, size;
 		return false;
 	}
 	
-	if (!shell_write_saved_state(&size, sizeof(int))) return false;
-    if (!shell_write_saved_state(&integ, sizeof(integ_state))) return false;
     return true;
 }
 

@@ -19,6 +19,7 @@
 
 #include "core_globals.h"
 #include "core_ebml.h"
+#include "core_main.h"
 #include "core_tables.h"
 #include "shell.h"
 #include <stdlib.h>
@@ -214,6 +215,28 @@ int sz, j;
 }
 
 /*
+ * write unsized master element header
+ * - write master element
+ * - write buffer
+ */
+bool ebmlFlushEl(int elId, int elSz, int bufSz, unsigned char *buf) {
+unsigned char elBuf[16];
+int sz, j;
+	j = ebml2VInt(elId, &elBuf[0]);
+	if (j == 0) {
+		return false;
+	}
+	sz = j;
+	if (!shell_write_saved_state(elBuf, sz)) { 						
+		return false;
+	}
+	if (!shell_write_saved_state(buf, bufSz)) { 						
+		return false;
+	}
+	return true; 
+}
+
+/*
  * turns an stack variable to a named variable
  */
 bool ebmlWriteReg(vartype *v, char reg) {
@@ -228,8 +251,8 @@ var_struct namedReg;
  * turns alpha reg to a named variable
  */
 bool ebmlWriteAlphaReg() {
-int sz, j;
 unsigned char buf[64];
+int sz, j;
 char reg;
 	sz = 0;
 	/* write variable name */
@@ -251,8 +274,8 @@ char reg;
  * stores var as ebml subdocument
  */
 bool ebmlWriteVar(var_struct *v) {
-int sz, szEl, elId;
 unsigned char buf[64];
+int sz, szEl, elId;
 vartype_real *r;
 vartype_complex *c;
 vartype_string *s;
@@ -407,7 +430,7 @@ int type, i, j;
 			}
 			sz += j;
 			if ((sz >= (sizeof(buf) + EbmlPhloatSZ)) || (i == msz)) {
-				if (shell_write_saved_state(buf, sz)) {
+				if (!shell_write_saved_state(buf, sz)) {
 					return false;
 				}
 				sz = 0;
@@ -422,13 +445,59 @@ int type, i, j;
 			}
 			sz += j;
 			if ((sz >= (sizeof(buf) + EbmlPhloatSZ)) || (i == msz * 2)) {
-				if (shell_write_saved_state(buf, sz)) {
+				if (!shell_write_saved_state(buf, sz)) {
 					return false;
 				}
 				sz = 0;
 			}
 		}
 	}
+	return true;
+}
+
+/*
+ * stores program as ebml subdocument
+ */
+bool ebmlWriteProgram(int prgm_index, prgm_struct *p) {
+unsigned char buf[64];
+int i, j, sz, szPgm;
+int length;
+char c;
+int done;
+int4 pc;
+	szPgm = core_program_size(prgm_index);
+	length = 0;
+    for (i = labels_count - 1; i >= 0; i--) {
+		if (labels[i].prgm == prgm_index) {
+			length = labels[i].length;
+			break;
+		}
+	}
+	sz = 0;
+	j = ebmlWriteString(EBMLFree42ProgName, length, length != 0 ? labels[i].name : &c, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebml2VInt(EBMLFree42ProgData, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	if (!ebmlFlushSizedEl(EBMLFree42Prog, sz + szPgm, sz, buf)) {
+		return false;
+	}
+
+	current_prgm = prgm_index;
+	pc = 0;
+	sz = 0;
+	do {
+		sz = 0;
+		done = core_Free42To42(&pc, buf, &sz);
+		if (!shell_write_saved_state(buf, sz)) {
+			return false;
+		}
+	} while (!done);
 	return true;
 }
 
@@ -540,6 +609,125 @@ int j, sz;
 	return ebmlFlushSizedEl(elId, sz, sz, buf);
 }
 
+/*
+ *
+ */
+bool ebmlWriteMasterHeader() {
+unsigned char buf[64];
+int j, sz;
+	sz = 0;
+	j = ebmlWriteString(EBMLFree42Desc, sizeof(_EBMLFree42Desc), _EBMLFree42Desc, &buf[0]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebmlWriteVInt(EBMLFree42Version, _EBMLFree42Version, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebmlWriteVInt(EBMLFree42ReadVersion, _EBMLFree42ReadVersion, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	return ebmlFlushEl(EBMLFree42MasterElement, sz, sz, buf);
+}
+
+/*
+ *
+ */
+bool ebmlWriteCoreDocument() {
+unsigned char buf[64];
+int j, sz;
+	sz = 0;
+	j = ebmlWriteVInt(EBMLFree42CoreVersion, _EBMLFree42CoreVersion, &buf[0]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebmlWriteVInt(EBMLFree42CoreReadVersion, _EBMLFree42CoreReadVersion, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	return ebmlFlushEl(EBMLFree42Core, sz, sz, buf);
+}
+
+/*
+ *
+ */
+bool ebmlWriteVarsDocument(unsigned int count) {
+unsigned char buf[64];
+int j, sz;
+	sz = 0;
+	j = ebmlWriteVInt(EBMLFree42VarsVersion, _EBMLFree42VarsVersion, &buf[0]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebmlWriteVInt(EBMLFree42VarsReadVersion, _EBMLFree42VarsReadVersion, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebmlWriteVInt(EBMLFree42VarsCount, count, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	return ebmlFlushEl(EBMLFree42Vars, sz, sz, buf);
+}
+
+/*
+ *
+ */
+bool ebmlWriteProgsDocument(unsigned int count){
+unsigned char buf[64];
+int j, sz;
+	sz = 0;
+	j = ebmlWriteVInt(EBMLFree42ProgsVersion, _EBMLFree42ProgsVersion, &buf[0]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebmlWriteVInt(EBMLFree42ProgsReadVersion, _EBMLFree42ProgsReadVersion, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebmlWriteVInt(EBMLFree42ProgsCount, count, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	return ebmlFlushEl(EBMLFree42Progs, sz, sz, buf);
+}
+
+/*
+ *
+ */
+bool ebmlWriteShellDocument(int len, char * OsVersion) {
+unsigned char buf[64];
+int j, sz;
+	sz = 0;
+	j = ebmlWriteVInt(EBMLFree42ShellVersion, _EBMLFree42ShellVersion, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebmlWriteVInt(EBMLFree42ShellReadVersion, _EBMLFree42ShellReadVersion, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebmlWriteString(EBMLFree42ShellOS, len, OsVersion, &buf[0]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	return ebmlFlushEl(EBMLFree42Shell, sz, sz, buf);
+}
 
 
 /*

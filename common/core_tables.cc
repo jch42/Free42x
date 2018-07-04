@@ -371,12 +371,12 @@ static const command_spec cmd_array[] =
      */
 
     /* Underhill's COPAN (Obsolete) */
-    { /* OPENF */       "OPENF",                5, docmd_xrom,       0x0000a7c1, ARG_NONE,  FLAG_NONE },
-    { /* CLOSF */       "CLOSF",                5, docmd_xrom,      0x0000a7c2, ARG_NONE,  FLAG_NONE },
-    { /* READP */       "READK",                5, docmd_xrom,       0x0000a7c3, ARG_NONE,  FLAG_NONE },
-    { /* WRITP */       "WRITP",                5, docmd_xrom,       0x0000a7c4, ARG_NONE,  FLAG_NONE },
-    { /* GETXY */       "GETXY",                5, docmd_xrom,       0x0000a7c5, ARG_NONE,  FLAG_NONE },
-    { /* PUTXY */       "PUTXY",                5, docmd_xrom,       0x0000a7c6, ARG_NONE,  FLAG_NONE },
+    { /* OPENF */       "OPENF",                5, docmd_xrom,        0x0000a7c1, ARG_NONE,  FLAG_NONE },
+    { /* CLOSF */       "CLOSF",                5, docmd_xrom,        0x0000a7c2, ARG_NONE,  FLAG_NONE },
+    { /* READP */       "READK",                5, docmd_xrom,        0x0000a7c3, ARG_NONE,  FLAG_NONE },
+    { /* WRITP */       "WRITP",                5, docmd_xrom,        0x0000a7c4, ARG_NONE,  FLAG_NONE },
+    { /* GETXY */       "GETXY",                5, docmd_xrom,        0x0000a7c5, ARG_NONE,  FLAG_NONE },
+    { /* PUTXY */       "PUTXY",                5, docmd_xrom,        0x0000a7c6, ARG_NONE,  FLAG_NONE },
     { /* CLRP */        "CLRP",                 4, docmd_xrom,        0x0000a7c7, ARG_NONE,  FLAG_NONE },
     { /* CLRD */        "CLRD",                 4, docmd_xrom,        0x0000a7c8, ARG_NONE,  FLAG_NONE },
     { /* APPD */        "APPD",                 4, docmd_xrom,        0x0000a7c9, ARG_NONE,  FLAG_NONE },

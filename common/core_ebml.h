@@ -161,6 +161,22 @@
  */
 
 
+#define _EBMLFree42Desc					"Free42 ebml state file"
+#define _EBMLFree42Version				1
+#define _EBMLFree42ReadVersion			1
+
+#define _EBMLFree42CoreVersion			1
+#define _EBMLFree42CoreReadVersion		1
+
+#define _EBMLFree42VarsVersion			1
+#define _EBMLFree42VarsReadVersion		1
+
+#define _EBMLFree42ProgsVersion			1
+#define _EBMLFree42ProgsReadVersion		1
+
+#define _EBMLFree42ShellVersion			1
+#define _EBMLFree42ShellReadVersion		1
+
 
 /*
  * types for base elements Ids
@@ -177,9 +193,9 @@
  * Master document header
  */
 #define EBMLFree42						0x4672ee420		/* Free42 top master element, vint		*/
-#define EBMLFree42Desc					0x1013			/* Free42 document description, string	*/
-#define EBMLFree42Version				0x1021			/* specs used to create the document	*/
-#define EBMLFree42ReadVersion			0x1031			/* minimum version to read the document	*/
+#define EBMLFree42Desc					0x0013			/* Free42 document description, string	*/
+#define EBMLFree42Version				0x0021			/* specs used to create the document	*/
+#define EBMLFree42ReadVersion			0x0031			/* minimum version to read the document	*/
 
 /*
  * variables sub documents
@@ -220,13 +236,20 @@
 #define EBMLFree42VarsCount				0x4031			/* element, number of objects in variables document, vint	*/
 
 /*
+ * core document
+ */
+#define EBMLFree42Core					0x2000			/* Master element, document containing core state		*/
+#define EBMLFree42CoreVersion			0x2011			/* Element, version used to create this document, vint	*/
+#define EBMLFree42CoreReadVersion		0x2021			/* Element, minimum version to read this document, vint	*/
+
+/*
  * args common elements
  */
-#define EBMLFree42ArgSize				0x2011			/* size of argument, vint						*/
-#define EBMLFree42ArgType				0x2021			/* type of argument, vint						*/
-#define EBMLFree42ArgLength				0x2031			/* length in arg struct, vint					*/
-#define EBMLFree42ArgTarget				0x2042			/* target in arg struct, vint					*/
-#define EBMLFree42ArgVal				0x2050			/* val as union in arg struct, variable type	*/
+#define EBMLFree42ArgSize				0x2111			/* size of argument, vint						*/
+#define EBMLFree42ArgType				0x2121			/* type of argument, vint						*/
+#define EBMLFree42ArgLength				0x2131			/* length in arg struct, vint					*/
+#define EBMLFree42ArgTarget				0x2142			/* target in arg struct, vint					*/
+#define EBMLFree42ArgVal				0x2150			/* val as union in arg struct, variable type	*/
 
 /*
  * program element
@@ -245,223 +268,225 @@
 #define EBMLFree42ProgsCount			0x6031			/* Element, number of programs in document, vint			*/
 
 /*
- * core document
- */
-#define EBMLFree42Core					0x3000			/* Master element, document containing core state		*/
-#define EBMLFree42CoreVersion			0x3011			/* Element, version used to create this document, vint	*/
-#define EBMLFree42CoreReadVersion		0x3021			/* Element, minimum version to read this document, vint	*/
-
-/*
  * shell document
  */
-#define EBMLFree42Shell					0x2000			/* Master element, document containing shel state		*/
-#define EBMLFree42ShellVersion			0x2011			/* Element, version used to create this document, vint	*/
-#define EBMLFree42ShellReadVersion		0x2021			/* Element, minimum version to read this document, vint	*/
-#define EBMLFree42ShellOS				0x2033			/* Element, OS name, string								*/
+#define EBMLFree42Shell					0x3000			/* Master element, document containing shel state		*/
+#define EBMLFree42ShellVersion			0x3011			/* Element, version used to create this document, vint	*/
+#define EBMLFree42ShellReadVersion		0x3021			/* Element, minimum version to read this document, vint	*/
+#define EBMLFree42ShellOS				0x3033			/* Element, OS name, string								*/
 
-/* id, val */
-
-/*#define EL_ID_NAME			0x12	/* name of variables and platform specific params */
-									/* id, len, val */
-/*#define EL_ID_PHLOAT		0x13	/* a phloat as a binary element */
-									/* id, len, val */
-/*#define EL_ID_ALPHA			0x14	/* a string */
-									/* id, len, val */
-/*#define EL_ID_PROGRAM		0x15	/* a program as a binary element */
-									/* id, len, val */
-/* variables objects */
-/*#define EL_ID_VARBASE		0x20	/* based on variable data types + 0x20 */
-/*#define EL_ID_VARNULL		0x20	/* an empty var */
-									/* id, EL_ID_NAME */
-/*#define EL_ID_VARREAL		0x21	/* real */
-									/* id, EL_ID_NAME, EL_ID_PHLOAT */
-/*#define EL_ID_VARCPX		0x22	/* complex */
-									/* id, EL_ID_NAME, EL_ID_PHLOAT, EL_ID_PHLOAT */
-/*#define EL_ID_VARREALMTX	0x23	/* real matrix */
-								     /* id, EL_ID_NAME, rows, columns, EL_ID_[PHLOAT | ALPHA]s..  */
-/*#define EL_ID_VARCPXMTX		0x24	/* complex matrix */
-									/* id, EL_ID_NAME, rows, columns, EL_ID_PHLOATs.. */
-/*#define EL_ID_VARSTRING		0x25	/* alpha */
-									/* id, EL_ID_NAME, EL_ID_ALPHA */
 
 /* 
- * global parameters
+ * core parameters
  */
-#define EL_mode_sigma_reg		0x20010		// int
-#define EL_mode_goose			0x20020		// int
-#define EL_mode_time_clktd		0x20030		// bool
-#define EL_mode_time_clk24		0x20040		// bool
-#define EL_flags				0x20050		// string
+#define EL_mode_sigma_reg		0x21010		// int
+#define EL_mode_goose			0x21020		// int
+#define EL_mode_time_clktd		0x21030		// bool
+#define EL_mode_time_clk24		0x21040		// bool
+#define EL_flags				0x21050		// string
 
-#define EL_current_prgm			0x20080		// int
-#define EL_pc					0x20090		// int
-#define EL_prgm_highlight_row	0x200a0		// int
+#define EL_current_prgm			0x21080		// int
+#define EL_pc					0x21090		// int
+#define EL_prgm_highlight_row	0x210a0		// int
 
-#define EL_varmenu_label		0x20100		// string
-#define EL_varmenu_label0		0x20100		// string
-#define EL_varmenu_label1		0x20110		// string
-#define EL_varmenu_label2		0x20120		// string
-#define EL_varmenu_label3		0x20130		// string
-#define EL_varmenu_label4		0x20140		// string
-#define EL_varmenu_label5		0x20150		// string
-#define EL_varmenu				0x20180		// string
-#define EL_varmenu_rows			0x20190		// int
-#define EL_varmenu_row			0x201a0		// int
-#define EL_varmenu_role			0x201b0		// int
+#define EL_varmenu_label		0x21100		// string
+#define EL_varmenu_label0		0x21100		// string
+#define EL_varmenu_label1		0x21110		// string
+#define EL_varmenu_label2		0x21120		// string
+#define EL_varmenu_label3		0x21130		// string
+#define EL_varmenu_label4		0x21140		// string
+#define EL_varmenu_label5		0x21150		// string
+#define EL_varmenu				0x21180		// string
+#define EL_varmenu_rows			0x21190		// int
+#define EL_varmenu_row			0x211a0		// int
+#define EL_varmenu_role			0x211b0		// int
 
-#define EL_core_matrix_singular		0x20200		// bool
-#define EL_core_matrix_outofrange	0x20210		// bool
-#define EL_core_auto_repeat			0x20220		// bool
-#define EL_core_enable_ext_accel	0x20230		// bool
-#define EL_core_enable_ext_locat	0x20240		// bool
-#define EL_core_enable_ext_heading	0x20250		// bool
-#define EL_core_enable_ext_time		0x20260		// bool
-#define EL_core_enable_ext_hpil		0x20270		// bool
+#define EL_core_matrix_singular		0x21200		// bool
+#define EL_core_matrix_outofrange	0x21210		// bool
+#define EL_core_auto_repeat			0x21220		// bool
+#define EL_core_enable_ext_accel	0x21230		// bool
+#define EL_core_enable_ext_locat	0x21240		// bool
+#define EL_core_enable_ext_heading	0x21250		// bool
+#define EL_core_enable_ext_time		0x21260		// bool
+#define EL_core_enable_ext_hpil		0x21270		// bool
 
-#define EL_mode_clall				0x20300		// bool
-#define EL_mode_command_entry		0x20310		// bool
-#define EL_mode_number_entry		0x20320		// bool
-#define EL_mode_alpha_entry			0x20330		// bool
-#define EL_mode_shift				0x20340		// bool
-#define EL_mode_appmenu				0x20350		// int
-#define EL_mode_plainmenu			0x20360		// int
-#define EL_mode_plainmenu_sticky	0x20370		// bool
-#define EL_mode_transientmenu		0x20380		// int
-#define EL_mode_alphamenu			0x20390		// int
-#define EL_mode_commandmenu			0x203a0		// int
-#define EL_mode_running				0x203b0		// bool
-#define EL_mode_varmenu				0x203c0		// bool
-#define EL_mode_updown				0x203d0		// bool
-#define EL_mode_getkey				0x203e0		// bool
+#define EL_mode_clall				0x21300		// bool
+#define EL_mode_command_entry		0x21310		// bool
+#define EL_mode_number_entry		0x21320		// bool
+#define EL_mode_alpha_entry			0x21330		// bool
+#define EL_mode_shift				0x21340		// bool
+#define EL_mode_appmenu				0x21350		// int
+#define EL_mode_plainmenu			0x21360		// int
+#define EL_mode_plainmenu_sticky	0x21370		// bool
+#define EL_mode_transientmenu		0x21380		// int
+#define EL_mode_alphamenu			0x21390		// int
+#define EL_mode_commandmenu			0x213a0		// int
+#define EL_mode_running				0x213b0		// bool
+#define EL_mode_varmenu				0x213c0		// bool
+#define EL_mode_updown				0x213d0		// bool
+#define EL_mode_getkey				0x213e0		// bool
 
-#define EL_entered_number			0x20400		// phloat
-#define EL_entered_string			0x20410		// string
+#define EL_entered_number			0x21400		// phloat
+#define EL_entered_string			0x21410		// string
 
-#define EL_pending_command			0x20480		// int
-#define EL_pending_command_arg		0x20490		// arg struct, high level
-#define EL_xeq_invisible			0x204a0		// int
+#define EL_pending_command			0x21480		// int
+#define EL_pending_command_arg		0x21490		// arg struct, high level
+#define EL_xeq_invisible			0x214a0		// int
 
-#define EL_incomplete_command				0x20500		// int
-#define EL_incomplete_ind					0x20510		// int
-#define EL_incomplete_alpha					0x20520		// int
-#define EL_incomplete_length				0x20530		// int
-#define EL_incomplete_maxdigits				0x20540		// int
-#define EL_incomplete_argtype				0x20550		// int
-#define EL_incomplete_num					0x20560		// int
-#define EL_incomplete_str					0x20570		// string
-#define EL_incomplete_saved_pc				0x20580		// int
-#define EL_incomplete_saved_highlight_row	0x20590		// int
-#define EL_cmdline							0x205a0		// string
-#define EL_cmdline_row						0x205b0	// int
+#define EL_incomplete_command				0x21500		// int
+#define EL_incomplete_ind					0x21510		// int
+#define EL_incomplete_alpha					0x21520		// int
+#define EL_incomplete_length				0x21530		// int
+#define EL_incomplete_maxdigits				0x21540		// int
+#define EL_incomplete_argtype				0x21550		// int
+#define EL_incomplete_num					0x21560		// int
+#define EL_incomplete_str					0x21570		// string
+#define EL_incomplete_saved_pc				0x21580		// int
+#define EL_incomplete_saved_highlight_row	0x21590		// int
+#define EL_cmdline							0x215a0		// string
+#define EL_cmdline_row						0x215b0	// int
 
-#define EL_matedit_mode				0x20600		// int
-#define EL_matedit_name				0x20610		// string
-#define EL_matedit_i				0x20620		// int
-#define EL_matedit_j				0x20630		// int
-#define EL_matedit_prev_appmenu		0x20640		// int
+#define EL_matedit_mode						0x21600		// int
+#define EL_matedit_name						0x21610		// string
+#define EL_matedit_i						0x21620		// int
+#define EL_matedit_j						0x21630		// int
+#define EL_matedit_prev_appmenu				0x21640		// int
 
-#define EL_input_name				0x20680		// string
-#define EL_input_arg				0x20681		// arg struct, high level
+#define EL_input_name						0x21680		// string
+#define EL_input_arg						0x21681		// arg struct, high level
 
-#define EL_baseapp					0x20700		// int
+#define EL_baseapp							0x21700		// int
 
-#define EL_random_number1			0x20740		// int
-#define EL_random_number2			0x20750		// int
-#define EL_random_number3			0x20760		// int
-#define EL_random_number4			0x20770		// int
+#define EL_random_number1					0x21740		// int
+#define EL_random_number2					0x21750		// int
+#define EL_random_number3					0x21760		// int
+#define EL_random_number4					0x21770		// int
 
-#define EL_deferred_print			0x20800		// int
+#define EL_deferred_print					0x21800		// int
 
-#define EL_keybuf_head				0x20880		// int
-#define EL_keybuf_tail				0x20890		// int
-#define EL_rtn_sp					0x208a0		// int, moved here to keep contiguous space for stacks
+#define EL_keybuf_head						0x21880		// int
+#define EL_keybuf_tail						0x21890		// int
+#define EL_rtn_sp							0x218a0		// int, moved here to keep contiguous space for stacks
 
-#define EL_keybuf					0x20900		// int
-												// 0x209x0 enough place for 16 keys
+#define EL_keybuf							0x21900		// int
+														// 0x219x0 enough place for 16 keys
 
-#define EL_rtn_prgm					0x20a00		// int
-												// 0x20ax0 enough place for upto 32 level stack ?
-#define EL_rtn_pc					0x20c00		// int
-												// 0x20bx0 enough place for upto 32 level rtn zddresses ?
+#define EL_rtn_prgm							0x21a00		// int
+														// 0x21ax0 enough place for upto 32 level stack ?
+#define EL_rtn_pc							0x21c00		// int
+														// 0x21bx0 enough place for upto 32 level rtn zddresses ?
+
+/*
+ * display
+ */
+#define El_display_catalogmenu_section		0x22000		// int
+														// 0x22000 to 0x220f0 enough place for up to 16 entries
+#define El_display_catalogmenu_rows			0x22100		// int
+														// 0x22100 to 0x221f0 enough place for up to 16 entries
+#define El_display_catalogmenu_row			0x22200		// int
+														// 0x22200 to 0x222f0 enough place for up to 16 entries
+#define El_display_catalogmenu_item			0x22400		// int
+														// 0x22400 to 0x227f0 enough place for up to 64 entries
+#define El_display_custommenu				0x22800		// string
+														// 0x22800 to 0x22bf0 enough place for up to 64 entries
+#define El_display_progmenu_arg				0x22c00		// arg
+														// 0x22c00 to 0x22cf0 enough place for up to 16 entries
+#define El_display_progmenu_is_gto			0x22d00		// int
+														// 0x22d00 to 0x22df0 enough place for up to 16 entries
+#define El_display_progmenu					0x22e00		// string
+														// 0x22e00 to 0x22ef0 enough place for up to 16 entries
+#define El_display							0x22f00		// string
+#define El_display_appmenu_exitcallback		0x22f10		// int
+
+														
 /*
  * Math
  */
 
 // Solver
-#define El_solveVersion				0x21000		// int
-#define EL_solvePrgm_name			0x21010		// string
-#define EL_solveActive_prgm_name	0x21020		// string
-#define EL_solveKeep_running		0x21030		// int
-#define EL_solvePrev_prgm			0x21040		// int
-#define EL_solvePrev_pc				0x21050		// int
-#define EL_solveState				0x21060		// int
-#define EL_solveWhich				0x21070		// int
-#define EL_solveToggle				0x21080		// int
-#define EL_solveRetry_counter		0x21090		// int
-#define EL_solveRetry_value			0x210a0		// phloat
-#define EL_solveX1					0x210b0		// phloat
-#define EL_solveX2					0x210c0		// phloat
-#define EL_solveX3					0x210d0		// phloat
-#define EL_solveFx1					0x210e0		// phloat
-#define EL_solveFx2					0x210f0		// phloat
-#define EL_solvePrev_x				0x21100		// phloat
-#define EL_solveCurr_x				0x21120		// phloat
-#define EL_solveCurr_f				0x21130		// phloat
-#define EL_solveXm					0x21140		// phloat
-#define EL_solveFxm					0x21150		// phloat
-#define EL_solveLast_disp_time		0x21160		// int
-#define EL_solveShadow_name			0x21400		// string
-												// 0x212x0 enough place for upto 32 NUM_SHADOWS ?
-#define EL_solveShadow_value		0x21800		// phloat
-												// 0x213x0 enough place for upto 32 NUM_SHADOWS ?
+#define El_solveVersion				0x23000		// int
+#define EL_solvePrgm_name			0x23010		// string
+#define EL_solveActive_prgm_name	0x23020		// string
+#define EL_solveKeep_running		0x23030		// int
+#define EL_solvePrev_prgm			0x23040		// int
+#define EL_solvePrev_pc				0x23050		// int
+#define EL_solveState				0x23060		// int
+#define EL_solveWhich				0x23070		// int
+#define EL_solveToggle				0x23080		// int
+#define EL_solveRetry_counter		0x23090		// int
+#define EL_solveRetry_value			0x230a0		// phloat
+#define EL_solveX1					0x230b0		// phloat
+#define EL_solveX2					0x230c0		// phloat
+#define EL_solveX3					0x230d0		// phloat
+#define EL_solveFx1					0x230e0		// phloat
+#define EL_solveFx2					0x230f0		// phloat
+#define EL_solvePrev_x				0x23100		// phloat
+#define EL_solveCurr_x				0x23120		// phloat
+#define EL_solveCurr_f				0x23130		// phloat
+#define EL_solveXm					0x23140		// phloat
+#define EL_solveFxm					0x23150		// phloat
+#define EL_solveLast_disp_time		0x23160		// int
+#define EL_solveShadow_name			0x23400		// string
+												// 0x234x0 enough place for upto 32 NUM_SHADOWS ?
+#define EL_solveShadow_value		0x23800		// phloat
+												// 0x238x0 enough place for upto 32 NUM_SHADOWS ?
 
 // Integrator
-#define El_integVersion				0x22000		// int
-#define EL_integPrgm_name			0x22010		// string
-#define EL_integActive_prgm_name	0x22020		// string
-#define EL_integVar_name			0x22030		// string
-#define EL_integKeep_running		0x22040		// int
-#define EL_integPrev_prgm			0x22050		// int
-#define EL_integPrev_pc				0x22060		// int
-#define EL_integState				0x22070		// int
-#define EL_integLlim				0x22080		// phloat
-#define EL_integUlim				0x22090		// phloat
-#define EL_integAcc					0x220a0		// phloat
-#define EL_integA					0x220b0		// phloat
-#define EL_integB					0x220c0		// phloat
-#define EL_integEps					0x220d0		// phloat
-#define EL_integN					0x220e0		// int
-#define EL_integM					0x220f0		// int
-#define EL_integI					0x22100		// int
-#define EL_integK					0x22110		// int
-#define EL_integH					0x22120		// phloat
-#define EL_integSum					0x22130		// phloat
-#define EL_integNsteps				0x22140		// int
-#define EL_integP					0x22150		// phloat
-#define EL_integT					0x22160		// phloat
-#define EL_integU					0x22170		// phloat
-#define EL_integPrev_int			0x22180		// phloat
-#define EL_integPrev_res			0x22190		// phloat
-#define EL_integC					0x22400		// phloat
-												// 0x2520c0..cf enough place for upto 32 ROMBK ?
-#define EL_integS					0x22800		// phloat
-												// 0x2520e0..ef enough place for upto 32 ROMBK ?
+#define El_integVersion				0x24000		// int
+#define EL_integPrgm_name			0x24010		// string
+#define EL_integActive_prgm_name	0x24020		// string
+#define EL_integVar_name			0x24030		// string
+#define EL_integKeep_running		0x24040		// int
+#define EL_integPrev_prgm			0x24050		// int
+#define EL_integPrev_pc				0x24060		// int
+#define EL_integState				0x24070		// int
+#define EL_integLlim				0x24080		// phloat
+#define EL_integUlim				0x24090		// phloat
+#define EL_integAcc					0x240a0		// phloat
+#define EL_integA					0x240b0		// phloat
+#define EL_integB					0x240c0		// phloat
+#define EL_integEps					0x240d0		// phloat
+#define EL_integN					0x240e0		// int
+#define EL_integM					0x240f0		// int
+#define EL_integI					0x24100		// int
+#define EL_integK					0x24110		// int
+#define EL_integH					0x24120		// phloat
+#define EL_integSum					0x24130		// phloat
+#define EL_integNsteps				0x24140		// int
+#define EL_integP					0x24150		// phloat
+#define EL_integT					0x24160		// phloat
+#define EL_integU					0x24170		// phloat
+#define EL_integPrev_int			0x24180		// phloat
+#define EL_integPrev_res			0x24190		// phloat
+#define EL_integC					0x24400		// phloat
+												// 0x244x0 enough place for upto 32 ROMBK ?
+#define EL_integS					0x24800		// phloat
+												// 0x248x0 enough place for upto 32 ROMBK ?
 
-#define EL_off_enable_flag			0x22ff0		// only for iphone 
+#define EL_off_enable_flag			0x2fff0		// only for iphone 
 
-/* Static size of elements, don't forget to adjust against header */
+/*
+ * static size of variables elements, don't forget to adjust against header
+ */
 #define EbmlPhloatSZ		19
 #define EbmlStringSZ		3
 
 bool ebmlWriteReg(vartype *v, char reg);
 bool ebmlWriteAlphaReg();
 bool ebmlWriteVar(var_struct *v);
+bool ebmlWriteProgram(int prgm_index, prgm_struct *p);
 
 bool ebmlWriteElBool(unsigned int elId, bool val);
 bool ebmlWriteElInt(unsigned int elId, int val);
 bool ebmlWriteElString(unsigned int elId, int len, char *val);
 bool ebmlWriteElPhloat(unsigned int elId, phloat* p);
 bool ebmlWriteElArg(unsigned int elId, arg_struct *arg);
+
+bool ebmlWriteMasterHeader();
+bool ebmlWriteCoreDocument();
+bool ebmlWriteVarsDocument(unsigned int count);
+bool ebmlWriteProgsDocument(unsigned int count);
+bool ebmlWriteShellDocument(int len, char * OsVersion);
 
 
 #endif

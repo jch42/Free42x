@@ -17,6 +17,8 @@ copy core_commands8.cpp ..\common\core_commands8.cc
 copy core_commands8.h ..\common
 copy core_display.cpp ..\common\core_display.cc
 copy core_display.h ..\common
+copy core_ebml.cpp ..\common\core_ebml.cc
+copy core_ebml.h ..\common
 copy core_globals.cpp ..\common\core_globals.cc
 copy core_globals.h ..\common
 copy core_helpers.cpp ..\common\core_helpers.cc

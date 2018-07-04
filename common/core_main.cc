@@ -998,7 +998,7 @@ int core_Free42To42 (int4 *pc, unsigned char *buf, int *pt) {
 
     get_next_command(pc, &cmd, &arg, 0);
 	hp42s_code = cmdlist(cmd)->hp42s_code;
-	// use high nybble to deal with special cases
+	// use high nibble to deal with special cases
 	switch (hp42s_code >> 28) {
 		case 0x00 :
 			core_Free42To42_standard(hp42s_code, &arg, buf, pt);

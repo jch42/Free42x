@@ -20,6 +20,7 @@
 
 #include "core_display.h"
 #include "core_commands2.h"
+#include "core_ebml.h"
 #include "core_helpers.h"
 #include "core_main.h"
 #include "core_tables.h"
@@ -552,31 +553,59 @@ static int get_cat_index();
 
 
 bool persist_display() {
-    if (!shell_write_saved_state(catalogmenu_section, 5 * sizeof(int)))
-        return false;
-    if (!shell_write_saved_state(catalogmenu_rows, 5 * sizeof(int)))
-        return false;
-    if (!shell_write_saved_state(catalogmenu_row, 5 * sizeof(int)))
-        return false;
-    if (!shell_write_saved_state(catalogmenu_item, 30 * sizeof(int)))
-        return false;
-    if (!shell_write_saved_state(custommenu_length, 18 * sizeof(int)))
-        return false;
-    if (!shell_write_saved_state(custommenu_label, 126))
-        return false;
-    for (int i = 0; i < 9; i++)
-        if (!write_arg(progmenu_arg + i))
+int i, j, k;
+	for (i = 0; i < 5; i++) {
+		if (!ebmlWriteElInt(El_display_catalogmenu_section + i * 16, catalogmenu_section[i])) {
+	        return false;
+		}
+	}
+	for (i = 0; i < 5; i++) {
+		if (!ebmlWriteElInt(El_display_catalogmenu_rows + i * 16, catalogmenu_rows[i])) {
+	        return false;
+		}
+	}
+	for (i = 0; i < 5; i++) {
+		if (!ebmlWriteElInt(El_display_catalogmenu_row + i * 16, catalogmenu_row[i])) {
+	        return false;
+		}
+	}
+	k = 0;
+	for (i = 0; i < 5; i++) {
+		for (j = 0; j < 6; j++) {
+			if (!ebmlWriteElInt(El_display_catalogmenu_item + k++ * 16, catalogmenu_item[i][j])) {
+				return false;
+			}
+		}
+	}
+	k = 0;
+	for (i = 0; i < 3; i++) {
+		for (j = 0; j < 6; j++) {
+			if (!ebmlWriteElString(El_display_custommenu + k++ * 16, custommenu_length[i][j], custommenu_label[i][j])) {
+				return false;
+			}
+		}
+	}
+	for (i = 0; i < 9; i++) {
+		if (!ebmlWriteElArg(El_display_progmenu_arg + i * 16, &progmenu_arg[i])) {
             return false;
-    if (!shell_write_saved_state(progmenu_is_gto, 9 * sizeof(int)))
+		}
+	}
+	for (i = 0; i < 9; i++) {
+		if (!ebmlWriteElInt(El_display_progmenu_is_gto + i * 16, progmenu_is_gto[i])) {
+            return false;
+		}
+	}
+	for (i = 0; i < 9; i++) {
+		if (!ebmlWriteElString(El_display_progmenu + i * 16, progmenu_length[i], progmenu_label[i])) {
+            return false;
+		}
+	}
+	if (!ebmlWriteElString(El_display, sizeof(display), display)) {
+		return false;
+	}
+	if (!ebmlWriteElInt(El_display_appmenu_exitcallback, appmenu_exitcallback)) {
         return false;
-    if (!shell_write_saved_state(progmenu_length, 6 * sizeof(int)))
-        return false;
-    if (!shell_write_saved_state(progmenu_label, 42))
-        return false;
-    if (!shell_write_saved_state(display, 272))
-        return false;
-    if (!shell_write_saved_state(&appmenu_exitcallback, sizeof(int)))
-        return false;
+	}
     return true;
 }
 
@@ -1398,6 +1427,7 @@ void draw_varmenu() {
     varmenu_rows = (num_mvars + 5) / 6;
     if (varmenu_row >= varmenu_rows)
         varmenu_row = varmenu_rows - 1;
+	shell_annunciators(varmenu_rows > 1, -1, -1, -1, -1, -1);
 
     row = 0;
     key = 0;

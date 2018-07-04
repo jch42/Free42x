@@ -1045,102 +1045,6 @@ static bool unpersist_vartype(vartype **v, bool padded) {
     }
 }
 
-static bool persist_globals() {
-    int i;
-    array_count = 0;
-    array_list_capacity = 0;
-    array_list = NULL;
-    bool ret = false;
-	
-	// persistance of register
-    if (!ebmlWriteReg(reg_x,'x'))
-        goto done;
-    if (!ebmlWriteReg(reg_y,'y'))
-        goto done;
-    if (!ebmlWriteReg(reg_z,'z'))
-        goto done;
-    if (!ebmlWriteReg(reg_t,'t'))
-        goto done;
-    if (!ebmlWriteReg(reg_lastx,'l'))
-        goto done;
-    if (!ebmlWriteAlphaReg())
-        goto done;
-
-	// persistance of variables
-    if (!write_int(vars_count))
-        goto done;
-	for (i = 0; i < vars_count; i++) {
-		if (!ebmlWriteVar(&vars[i])) {
-			goto done;
-		}
-	}
-
-	// persistance of programs
-    if (!write_int(prgms_count))
-        goto done;
-    for (i = 0; i < prgms_count; i++)
-        if (!shell_write_saved_state(prgms + i, sizeof(prgm_struct_32bit)))
-            goto done;
-    for (i = 0; i < prgms_count; i++)
-        if (!shell_write_saved_state(prgms[i].text, prgms[i].size))
-            goto done;
-
-	// persistance of core state
-    if (!ebmlWriteElInt(EL_mode_sigma_reg, mode_sigma_reg))
-        goto done;
-    if (!ebmlWriteElInt(EL_mode_goose, mode_goose))
-        goto done;
-    if (!ebmlWriteElBool(EL_mode_time_clktd, mode_time_clktd))
-        goto done;
-    if (!ebmlWriteElBool(EL_mode_time_clk24, mode_time_clk24))
-        goto done;
-	if (!ebmlWriteElString(EL_flags, sizeof(flags_struct), flags.farray))
-        goto done;
-
-    if (!ebmlWriteElInt(EL_current_prgm, current_prgm))
-        goto done;
-    if (!ebmlWriteElInt(EL_pc, pc))
-        goto done;
-    if (!ebmlWriteElInt(EL_prgm_highlight_row, prgm_highlight_row))
-        goto done;
-
-	if (!ebmlWriteElString(EL_varmenu, sizeof(varmenu), varmenu))
-        goto done;
-    if (!ebmlWriteElInt(EL_varmenu_rows, varmenu_rows))
-        goto done;
-    if (!ebmlWriteElInt(EL_varmenu_row, varmenu_row))
-        goto done;
-	for (i = 0; i < 6; i++) {
-		if (!ebmlWriteElString(EL_varmenu_label + i * 16, varmenu_labellength[i], varmenu_labeltext[i])) {
-			goto done;
-		}
-	}
-    if (!ebmlWriteElInt(EL_varmenu_role, varmenu_role))
-        goto done;
-
-    if (!ebmlWriteElInt(EL_rtn_sp, rtn_sp))
-        goto done;
-	for (i = 0; i < MAX_RTNS; i++) {
-		if (!ebmlWriteElInt(EL_rtn_prgm + i, rtn_prgm[i])) {
-			goto done;
-		}
-	}
-	for (i = 0; i < MAX_RTNS; i++) {
-		if (!ebmlWriteElInt(EL_rtn_pc + i, rtn_pc[i])) {
-			goto done;
-		}
-	}
-#ifdef IPHONE
-    if (!ebmlWriteElBool(EL_off_enable_flag, off_enable_flag))
-        goto done;
-#endif
-    ret = true;
-
-    done:
-    free(array_list);
-    return ret;
-}
-
 static bool unpersist_globals(int4 ver) {
     int i;
     array_count = 0;
@@ -2127,24 +2031,12 @@ static bool read_int(int *n) {
     return shell_read_saved_state(n, sizeof(int)) == sizeof(int);
 }
 
-static bool write_int(int n) {
-    return shell_write_saved_state(&n, sizeof(int));
-}
-
 static bool read_int4(int4 *n) {
     return shell_read_saved_state(n, sizeof(int4)) == sizeof(int4);
 }
 
-static bool write_int4(int4 n) {
-    return shell_write_saved_state(&n, sizeof(int4));
-}
-
 static bool read_int8(int8 *n) {
     return shell_read_saved_state(n, sizeof(int8)) == sizeof(int8);
-}
-
-static bool write_int8(int8 n) {
-    return shell_write_saved_state(&n, sizeof(int8));
 }
 
 static bool read_bool(bool *b) {
@@ -2159,10 +2051,6 @@ static bool read_bool(bool *b) {
     } else {
         return shell_read_saved_state(b, sizeof(bool)) == sizeof(bool);
     }
-}
-
-static bool write_bool(bool b) {
-    return shell_write_saved_state(&b, sizeof(bool));
 }
 
 bool read_phloat(phloat *d) {
@@ -2188,10 +2076,6 @@ bool read_phloat(phloat *d) {
         #endif
         return true;
     }
-}
-
-bool write_phloat(phloat d) {
-    return shell_write_saved_state(&d, sizeof(phloat));
 }
 
 bool load_state(int4 ver) {
@@ -2417,10 +2301,11 @@ void save_state() {
      */
 int i;
     #ifdef BCD_MATH
-        if (!write_bool(true)) return;
+        //if (!write_bool(true)) return;
     #else
-        if (!write_bool(false)) return;
+        //if (!write_bool(false)) return;
     #endif
+	// core state
 	if (!ebmlWriteElBool(EL_core_matrix_singular, core_settings.matrix_singularmatrix)) {
 		return;
 	}
@@ -2605,18 +2490,123 @@ int i;
 		}
 	}
 
+	// more core state, globals
+	if (!ebmlWriteElInt(EL_mode_sigma_reg, mode_sigma_reg)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_mode_goose, mode_goose)) {
+		return;
+	}
+    if (!ebmlWriteElBool(EL_mode_time_clktd, mode_time_clktd)) {
+		return;
+	}
+    if (!ebmlWriteElBool(EL_mode_time_clk24, mode_time_clk24)) {
+		return;
+	}
+	if (!ebmlWriteElString(EL_flags, sizeof(flags_struct), flags.farray)) {
+		return;
+	}
+
+    if (!ebmlWriteElInt(EL_current_prgm, current_prgm)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_pc, pc)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_prgm_highlight_row, prgm_highlight_row)) {
+		return;
+	}
+
+	if (!ebmlWriteElString(EL_varmenu, sizeof(varmenu), varmenu)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_varmenu_rows, varmenu_rows)) {
+		return;
+	}
+    if (!ebmlWriteElInt(EL_varmenu_row, varmenu_row)) {
+		return;
+	}
+	for (i = 0; i < 6; i++) {
+		if (!ebmlWriteElString(EL_varmenu_label + i * 16, varmenu_labellength[i], varmenu_labeltext[i])) {
+			return;
+		}
+	}
+    if (!ebmlWriteElInt(EL_varmenu_role, varmenu_role)) {
+		return;
+	}
+
+    if (!ebmlWriteElInt(EL_rtn_sp, rtn_sp)) {
+		return;
+	}
+	for (i = 0; i < MAX_RTNS; i++) {
+		if (!ebmlWriteElInt(EL_rtn_prgm + i, rtn_prgm[i])) {
+			return;
+		}
+	}
+	for (i = 0; i < MAX_RTNS; i++) {
+		if (!ebmlWriteElInt(EL_rtn_pc + i, rtn_pc[i])) {
+			return;
+		}
+	}
+#ifdef IPHONE
+    if (!ebmlWriteElBool(EL_off_enable_flag, off_enable_flag)) {
+		return;
+	}
+#endif
+
+	// display, included in core
 	if (!persist_display()) {
         return;
-	}
-    
-	if (!persist_globals()) {
+	}    
+
+	// persistance of register
+    if (!ebmlWriteReg(reg_x,'x')) {
         return;
-	}
+	}    
+    if (!ebmlWriteReg(reg_y,'y')) {
+        return;
+	}    
+    if (!ebmlWriteReg(reg_z,'z')) {
+        return;
+	}    
+    if (!ebmlWriteReg(reg_t,'t')) {
+        return;
+	}    
+    if (!ebmlWriteReg(reg_lastx,'l')) {
+        return;
+	}    
+    if (!ebmlWriteAlphaReg()) {
+        return;
+	}    
+
+	// math
 	if (!persist_math()) {
         return;
 	}
+
+	// other modules
 	if (!persist_hpil()) {
 		return;
+	}
+
+	// persistance of variables
+	if (!ebmlWriteVarsDocument(vars_count)) {
+        return;
+	}
+	for (i = 0; i < vars_count; i++) {
+		if (!ebmlWriteVar(&vars[i])) {
+			return;
+		}
+	}
+
+	// persistance of programs
+	if (!ebmlWriteProgsDocument(prgms_count)) {
+        return;
+	}
+	for (i = 0; i < prgms_count; i++) {
+		if (!ebmlWriteProgram(i, prgms)) {
+			return;
+		}
 	}
 }
 
