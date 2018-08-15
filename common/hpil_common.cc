@@ -18,6 +18,7 @@
 #include <stdio.h>
 
 #include "core_display.h"
+#include "core_ebml.h"
 #include "core_globals.h"
 #include "core_helpers.h"
 #include "core_main.h"
@@ -88,10 +89,9 @@ void hpil_start(void) {
 /* IL init
  *
  */
-void hpil_init(bool modeEnabled, bool modeIP, bool modePIL_Box) {
+void hpil_init(bool modeEnabled, bool modePIL_Box) {
 	int err = ERR_BROKEN_LOOP;
 	hpil_settings.modeEnabled = modeEnabled;
-	hpil_settings.modeIP = modeIP;
 	hpil_settings.modePIL_Box = modePIL_Box;
 	hpil_start();
 	// should init all hpil modules
@@ -124,7 +124,7 @@ void hpil_init(bool modeEnabled, bool modeIP, bool modePIL_Box) {
 	}
 }
 
-void hpil_close(bool modeEnabled, bool modeIP, bool modePil_Box) {
+void hpil_close(bool modeEnabled, bool modePil_Box) {
 	if (hpil_settings.modePIL_Box) {
 		shell_write_frame(M_COFF);
 		loopTimeout = 250;			// 500 ms
@@ -138,7 +138,34 @@ void hpil_close(bool modeEnabled, bool modeIP, bool modePil_Box) {
  * save parts of hpil settings
  */
 bool persist_hpil(void) {
-	return shell_write_saved_state(&hpil_settings, sizeof(hpil_settings));
+	if (!ebmlWriteElInt(EL_hpil_selected, hpil_settings.selected)) {
+		return false;
+	}
+	if (!ebmlWriteElInt(EL_hpil_print, hpil_settings.print)) {
+		return false;
+	}
+	if (!ebmlWriteElInt(EL_hpil_disk, hpil_settings.disk)) {
+		return false;
+	}
+	if (!ebmlWriteElInt(EL_hpil_plotter, hpil_settings.plotter)) {
+		return false;
+	}
+	if (!ebmlWriteElInt(EL_hpil_prtAid, hpil_settings.prtAid)) {
+		return false;
+	}
+	if (!ebmlWriteElInt(EL_hpil_dskAid, hpil_settings.dskAid)) {
+		return false;
+	}
+	if (!ebmlWriteElBool(EL_hpil_modeEnabled, hpil_settings.modeEnabled)) {
+		return false;
+	}
+	if (!ebmlWriteElBool(EL_hpil_modeTransparent, hpil_settings.modeTransparent)) {
+		return false;
+	}
+	if (!ebmlWriteElBool(EL_hpil_modePIL_Box, hpil_settings.modePIL_Box)) {
+		return false;
+	}
+	return true;
 }
 
 /* unpersist_hpil

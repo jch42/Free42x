@@ -19,6 +19,7 @@
 
 #include "core_globals.h"
 #include "core_ebml.h"
+#include "core_helpers.h"
 #include "core_main.h"
 #include "core_tables.h"
 #include "shell.h"
@@ -103,6 +104,14 @@ int size=0;
 		b[2] = (unsigned char)((i >> 8) & 0xff);
 		b[3] = (unsigned char)(i & 0xff);
 	}
+	else {
+		size = 5;
+		b[0] = (unsigned char)(0x08);
+		b[1] = (unsigned char)((i >> 24) & 0xff);
+		b[2] = (unsigned char)((i >> 16) & 0xff);
+		b[3] = (unsigned char)((i >> 8)  & 0xff);
+		b[4] = (unsigned char)(i & 0xff);
+	}
 	return size;
 }
 
@@ -113,13 +122,13 @@ int ebmlWriteVInt(int elId, unsigned int i, unsigned char *b) {
 int j, sz;
 	sz = 0;
 	/* write Id */
-	j = ebml2VInt(elId & ~0x0f + EBMLFree42VIntElement, &b[0]);
+	j = ebml2VInt((elId & ~0x0f) + EBMLFree42VIntElement, &b[0]);
 	if (j == 0) {
 		return j;
 	}
 	sz += j;
-	/* write size */
-	j = ebml2VInt(sizeof(phloat), &b[sz]);
+	/* write value */
+	j = ebml2VInt(i, &b[sz]);
 	if (j == 0) {
 		return j;
 	}
@@ -131,22 +140,21 @@ int j, sz;
  * append integer representation of element to buffer
  */
 int ebmlWriteInt(int elId, int i, unsigned char *b) {
-unsigned char buf[16];
 int j, sz;
 	sz = 0;
 	/* write Id */
-	j = ebml2VInt(elId & ~0x0f + EBMLFree42IntElement, &b[0]);
+	j = ebml2VInt((elId & ~0x0f) + EBMLFree42IntElement, &b[sz]);
 	if (j == 0) {
 		return j;
 	}
 	sz += j;
-	j = ebml2VInt(sizeof(i), &buf[0]);
+	j = ebml2VInt(sizeof(i), &b[sz]);
 	if (j == 0) {
 		return false;
 	}
 	sz += j;
 	for (j = 0; j < sizeof(i); j++) {
-		buf[sz++] = (unsigned char)((i >> (j * 8)) & 0xff);
+		b[sz++] = (unsigned char)((i >> (j * 8)) & 0xff);
 	}
 	return sz;
 }
@@ -157,8 +165,14 @@ int j, sz;
 int ebmlWriteString(int elId, int l, char* a, unsigned char *b) {
 int i, j, sz;
 	sz = 0;
-	/* write Id and size */
-	j = ebmlWriteVInt(elId & ~0x0f + EBMLFree42StringElement, unsigned int(l), &b[0]);
+	/* write Id */
+	j = ebml2VInt((elId & ~0x0f) + EBMLFree42StringElement, &b[0]);
+	if (j == 0) {
+		return j;
+	}
+	sz += j;
+	/* write size */
+	j = ebml2VInt(unsigned int(l), &b[sz]);
 	if (j == 0) {
 		return j;
 	}
@@ -176,9 +190,14 @@ int ebmlWritePhloat(int elId, phloat* p, unsigned char *b) {
 int j, sz;
 	sz = 0;
 	/* write id & size */
-	j = ebmlWriteVInt(elId & ~0x0f + EBMLFree42PhloatElement, sizeof(phloat), &b[sz]);
+	j = ebml2VInt(elId, &b[sz]);
 	if (j == 0) {
-		return j;
+		return false;
+	}
+	sz += j;
+	j = ebml2VInt(sizeof(phloat), &b[sz]);
+	if (j == 0) {
+		return false;
 	}
 	sz += j;
 	memcpy(&b[sz], &p->val, sizeof(phloat));
@@ -192,7 +211,7 @@ int j, sz;
  * - write size Id (always master + 10) and value
  * - write buffer
  */
-bool ebmlFlushSizedEl(int elId, int elSz, int bufSz, unsigned char *buf) {
+bool ebmlFlushSizedMasterEl(int elId, int elSz, int bufSz, unsigned char *buf) {
 unsigned char elBuf[16];
 int sz, j;
 	j = ebml2VInt(elId, &elBuf[0]);
@@ -200,7 +219,7 @@ int sz, j;
 		return false;
 	}
 	sz = j;
-	j = ebmlWriteVInt(elId + 0x10, elSz, &elBuf[sz]);
+	j = ebmlWriteVInt(elId + 0x11, elSz, &elBuf[sz]);
 	if (j == 0) {
 		return false;
 	}
@@ -215,6 +234,33 @@ int sz, j;
 }
 
 /*
+ * write sized element header
+ * - write element Id
+ * - write size value
+ * - write buffer
+ */
+bool ebmlFlushSizedEl(int elId, int elSz, int bufSz, unsigned char *buf) {
+unsigned char elBuf[16];
+int sz, j;
+	j = ebml2VInt(elId, &elBuf[0]);
+	if (j == 0) {
+		return false;
+	}
+	sz = j;
+	j = ebml2VInt(elSz, &elBuf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	if (!shell_write_saved_state(elBuf, sz)) { 						
+		return false;
+	}
+	if (!shell_write_saved_state(buf, bufSz)) { 						
+		return false;
+	}
+	return true; 
+}
+/*
  * write unsized master element header
  * - write master element
  * - write buffer
@@ -227,6 +273,8 @@ int sz, j;
 		return false;
 	}
 	sz = j;
+	// unsized element tag, hum really needed ?
+	//elBuf[sz++] = 0xff;
 	if (!shell_write_saved_state(elBuf, sz)) { 						
 		return false;
 	}
@@ -240,11 +288,17 @@ int sz, j;
  * turns an stack variable to a named variable
  */
 bool ebmlWriteReg(vartype *v, char reg) {
-var_struct namedReg; 
-	namedReg.length = 1;
-	namedReg.name[0] = reg;
-	namedReg.value = v;
-	return ebmlWriteVar(&namedReg);
+var_struct namedReg;
+	if (v == 0) {
+		// variable may not have been initalized yet
+		return true;
+	}
+	else {
+		namedReg.length = 1;
+		namedReg.name[0] = reg;
+		namedReg.value = v;
+		return ebmlWriteVar(&namedReg);
+	}
 }
 
 /*
@@ -255,6 +309,7 @@ unsigned char buf[64];
 int sz, j;
 char reg;
 	sz = 0;
+	reg = 'A';
 	/* write variable name */
 	j = ebmlWriteString(EBMLFree42VarName, 1, &reg, &buf[0]);
 	if (j == 0) {
@@ -284,7 +339,7 @@ vartype_complexmatrix *cm;
 int n, msz;  
 int type, i, j;
 	type = v->value->type;
-	elId = EBMLFree42VarNull + type;
+	elId = EBMLFree42VarNull + (type << 4);
 	// Variable object - common header: ElId, Size, [ ElName[
 	j = ebmlWriteString(EBMLFree42VarName,(unsigned int)v->length, v->name, &buf[0]);
 	if (j == 0) {
@@ -299,7 +354,7 @@ int type, i, j;
 			break;
 		case TYPE_REAL :
 			// body: ElPhloat]
-			r = (vartype_real *) v;
+			r = (vartype_real *) v->value;
 			j = ebmlWritePhloat(EBMLFree42VarPhloat, &r->x, &buf[sz]);
 			if (j == 0) {
 				return false;
@@ -309,7 +364,7 @@ int type, i, j;
 			break;
         case TYPE_COMPLEX:
 			// body: phloat, phloat]
-            c = (vartype_complex *) v;
+			c = (vartype_complex *) v->value;
 			j = ebmlWritePhloat(EBMLFree42VarPhloat, &c->re, &buf[sz]);
 			if (j == 0) {
 				return false;
@@ -324,7 +379,7 @@ int type, i, j;
 			break;
         case TYPE_STRING:
 			// body: string length, string]
-            s = (vartype_string *) v;
+			s = (vartype_string *) v->value;
 			j = ebmlWriteString(EBMLFree42VarString, s->length, s->text, &buf[sz]);
 			if (j == 0) {
 				return false;
@@ -333,7 +388,7 @@ int type, i, j;
 			break;
         case TYPE_REALMATRIX:
 			// body: rows, columns, phloat[], char[]]
-			rm = (vartype_realmatrix *) v;
+			rm = (vartype_realmatrix *) v->value;
             msz = rm->rows * rm->columns;
             if (rm->array->refcount > 1) {
                 n = array_list_search(rm->array);
@@ -376,7 +431,7 @@ int type, i, j;
 			break;
         case TYPE_COMPLEXMATRIX:
 			// body: rows, columns, phloat[x2]]
-			cm = (vartype_complexmatrix *) v;
+			cm = (vartype_complexmatrix *) v->value;
             msz = cm->rows * cm->columns;
             if (cm->array->refcount > 1) {
                 n = array_list_search(cm->array);
@@ -412,12 +467,11 @@ int type, i, j;
             /* Should not happen */
             return false;
 	}
-	if (ebmlFlushSizedEl(elId, szEl, sz, buf)) {
+	if (!ebmlFlushSizedEl(elId, szEl, sz, buf)) {
 		return false;
 	}
-
+	sz = 0;
 	if (type == TYPE_REALMATRIX) {
-		sz = 0;
 		for (i = 0; i < msz; i++) {
 			if (rm->array->is_string[i]) {
 				j = ebmlWriteString(EBMLFree42VarString, phloat_length(rm->array->data[i]), phloat_text(rm->array->data[i]), &buf[sz]);
@@ -429,7 +483,7 @@ int type, i, j;
 				return false;
 			}
 			sz += j;
-			if ((sz >= (sizeof(buf) + EbmlPhloatSZ)) || (i == msz)) {
+			if ((sz >= (sizeof(buf) - EbmlPhloatSZ)) || (i == msz)) {
 				if (!shell_write_saved_state(buf, sz)) {
 					return false;
 				}
@@ -444,7 +498,7 @@ int type, i, j;
 				return false;
 			}
 			sz += j;
-			if ((sz >= (sizeof(buf) + EbmlPhloatSZ)) || (i == msz * 2)) {
+			if ((sz >= (sizeof(buf) - EbmlPhloatSZ)) || (i == msz * 2)) {
 				if (!shell_write_saved_state(buf, sz)) {
 					return false;
 				}
@@ -510,19 +564,14 @@ int j;
 	for (j = 0; j < sizeof(val); j++) {
 		buf[j] = (unsigned char)((val >> (j * 8)) & 0xff);
 	}
-	return ebmlFlushSizedEl(elId & ~0x0f + EBMLFree42IntElement, j, j, buf);
+	return ebmlFlushSizedEl((elId & ~0x0f) + EBMLFree42IntElement, j, j, buf);
 }
 
 /*
  * write element as string
  */
 bool ebmlWriteElString(unsigned int elId, int l, char *val) {
-unsigned char buf[16];
-int j;
-	for (j = 0; j < l; j++) {
-		buf[j++] = (unsigned char) val[j];
-	}
-	return ebmlFlushSizedEl(elId & ~0x0f + EBMLFree42StringElement, j, j, buf);
+	return ebmlFlushSizedEl((elId & ~0x0f) + EBMLFree42StringElement, l, l, (unsigned char *)val);
 }
 
 /*
@@ -531,7 +580,7 @@ int j;
 bool ebmlWriteElPhloat(unsigned int elId, phloat* p) {
 unsigned char buf[sizeof(phloat)];
 	memcpy(buf, &p->val, sizeof(phloat));
-	return ebmlFlushSizedEl(elId & ~0x0f + EBMLFree42PhloatElement, sizeof(phloat), sizeof(phloat), buf);
+	return ebmlFlushSizedEl((elId & ~0x0f) + EBMLFree42PhloatElement, sizeof(phloat), sizeof(phloat), buf);
 }
 
 /*
@@ -540,12 +589,26 @@ unsigned char buf[sizeof(phloat)];
 bool ebmlWriteElBool(unsigned int elId, bool val) {
 unsigned char buf;
 	buf = (val == true) ? 1 : 0;
-	return ebmlFlushSizedEl(elId & ~0x0f + EBMLFree42BooleanElement, 1, 1, &buf);
+	return ebmlFlushSizedEl((elId & ~0x0f) + EBMLFree42BooleanElement, 1, 1, &buf);
 }
 
+/*
+ * write element as binary object
+ */
+bool ebmlWriteElBinary(unsigned int elId, unsigned int l, void * b) {
+	return ebmlFlushSizedEl((elId & ~0x0f) + EBMLFree42BinaryElement, l, l, (unsigned char *)b);
+}
+
+/*
+ * write element as arg
+ */
 bool ebmlWriteElArg(unsigned int elId, arg_struct *arg) {
 unsigned char buf[64];
 int j, sz;
+	if (arg == 0) {
+		// arg may not have been initalized yet
+		return true;
+	}
 	sz = 0;
 	j = ebmlWriteVInt(EBMLFree42ArgType, arg->type, &buf[0]);
 	if (j == 0) {
@@ -616,7 +679,7 @@ bool ebmlWriteMasterHeader() {
 unsigned char buf[64];
 int j, sz;
 	sz = 0;
-	j = ebmlWriteString(EBMLFree42Desc, sizeof(_EBMLFree42Desc), _EBMLFree42Desc, &buf[0]);
+	j = ebmlWriteString(EBMLFree42Desc, sizeof(_EBMLFree42Desc)-1, _EBMLFree42Desc, &buf[0]);
 	if (j == 0) {
 		return false;
 	}
@@ -631,7 +694,7 @@ int j, sz;
 		return false;
 	}
 	sz += j;
-	return ebmlFlushEl(EBMLFree42MasterElement, sz, sz, buf);
+	return ebmlFlushEl(EBMLFree42, sz, sz, buf);
 }
 
 /*
@@ -707,21 +770,21 @@ int j, sz;
 /*
  *
  */
-bool ebmlWriteShellDocument(int len, char * OsVersion) {
+bool ebmlWriteShellDocument(unsigned int version, unsigned int readVersion, unsigned int len, char * OsVersion) {
 unsigned char buf[64];
 int j, sz;
 	sz = 0;
-	j = ebmlWriteVInt(EBMLFree42ShellVersion, _EBMLFree42ShellVersion, &buf[sz]);
+	j = ebmlWriteVInt(EBMLFree42ShellVersion, version, &buf[0]);
 	if (j == 0) {
 		return false;
 	}
 	sz += j;
-	j = ebmlWriteVInt(EBMLFree42ShellReadVersion, _EBMLFree42ShellReadVersion, &buf[sz]);
+	j = ebmlWriteVInt(EBMLFree42ShellReadVersion, readVersion, &buf[sz]);
 	if (j == 0) {
 		return false;
 	}
 	sz += j;
-	j = ebmlWriteString(EBMLFree42ShellOS, len, OsVersion, &buf[0]);
+	j = ebmlWriteString(EBMLFree42ShellOS, len, OsVersion, &buf[sz]);
 	if (j == 0) {
 		return false;
 	}

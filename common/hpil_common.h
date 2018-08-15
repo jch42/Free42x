@@ -42,7 +42,6 @@ typedef struct {
 	int dskAid;						// aid of disk
 	bool modeEnabled;				// hpil enabled...
 	bool modeTransparent;			// background loop processing
-	bool modeIP;					// use IP stack
 	bool modePIL_Box;				// use PIL_Box
 } HPIL_Settings;
 
@@ -88,8 +87,8 @@ typedef struct {
 	unsigned char len2;
 } AlphaSplit;
 
-void hpil_init(bool modeEnabled, bool modeIP, bool modePil_Box);
-void hpil_close(bool modeEnabled, bool modeIP, bool modePil_Box);
+void hpil_init(bool modeEnabled, bool modePil_Box);
+void hpil_close(bool modeEnabled, bool modePil_Box);
 bool persist_hpil(void);
 bool unpersist_hpil(int ver);
 int hpil_check(void);

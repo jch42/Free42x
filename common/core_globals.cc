@@ -2306,6 +2306,9 @@ int i;
         //if (!write_bool(false)) return;
     #endif
 	// core state
+	if (!ebmlWriteCoreDocument()) {
+		return;
+	}
 	if (!ebmlWriteElBool(EL_core_matrix_singular, core_settings.matrix_singularmatrix)) {
 		return;
 	}
@@ -2485,7 +2488,7 @@ int i;
 		return;
 	}
 	for (i = 0; i < 16; i++) {
-		if (!ebmlWriteElInt(EL_keybuf + i, keybuf[i])) {
+		if (!ebmlWriteElInt(EL_keybuf + (i << 4), keybuf[i])) {
 			return;
 		}
 	}

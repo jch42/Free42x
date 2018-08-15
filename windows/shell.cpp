@@ -39,6 +39,7 @@
 #include "shell_spool.h"
 #include "core_main.h"
 #include "core_display.h"
+#include "core_ebml.h"
 #include "msg2string.h"
 #include "hpil_common.h"
 
@@ -107,6 +108,7 @@ static int keymap_length = 0;
 static keymap_entry *keymap = NULL;
 
 #define SHELL_VERSION 8
+#define SHELL_OS "Windows"
 
 typedef struct state {
     BOOL extras;
@@ -1617,6 +1619,8 @@ static void Quit() {
         ;
     }
 
+	sprintf(statefilename, "%s\\statex.ebml", free42dirname);
+
     statefile = fopen(statefilename, "wb");
     if (statefile != NULL) {
         if (!placement_saved) {
@@ -2071,8 +2075,10 @@ void shell_powerdown() {
     PostQuitMessage(0);
 }
 
-double shell_random_seed() {
-    return ((double) rand()) / (RAND_MAX + 1.0);
+int8 shell_random_seed() {
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    return ((((int8) ft.dwHighDateTime) << 32) | (uint4) ft.dwLowDateTime) / 10000;
 }
 
 uint4 shell_milliseconds() {
@@ -2405,21 +2411,32 @@ static int read_shell_state(int4 *ver) {
 }
 
 static int write_shell_state() {
+
     int4 magic = FREE42_MAGIC;
     int4 version = FREE42_VERSION;
     int4 state_size = sizeof(state_type);
     int4 state_version = SHELL_VERSION;
+	if (!ebmlWriteMasterHeader()) {
+		return 0;
+	}
+	if (!ebmlWriteShellDocument(state_version, state_version, sizeof(SHELL_OS)-1, SHELL_OS)) {
+		return 0;
+	}
+	if (!ebmlWriteElBinary(EBMLFree42ShellState, state_size, &state)) {
+		return 0;
+	}
 
-    if (!shell_write_saved_state(&magic, sizeof(int4)))
-        return 0;
-    if (!shell_write_saved_state(&version, sizeof(int4)))
-        return 0;
-    if (!shell_write_saved_state(&state_size, sizeof(int4)))
-        return 0;
-    if (!shell_write_saved_state(&state_version, sizeof(int4)))
-        return 0;
-    if (!shell_write_saved_state(&state, sizeof(state_type)))
-        return 0;
+
+    //if (!shell_write_saved_state(&magic, sizeof(int4)))
+    //    return 0;
+    //if (!shell_write_saved_state(&version, sizeof(int4)))
+    //    return 0;
+    //if (!shell_write_saved_state(&state_size, sizeof(int4)))
+    //    return 0;
+    //if (!shell_write_saved_state(&state_version, sizeof(int4)))
+    //    return 0;
+    //if (!shell_write_saved_state(&state, sizeof(state_type)))
+    //    return 0;
 
     return 1;
 }
@@ -2774,7 +2791,7 @@ static void shell_init_port() {
 			modePIL_Box = state.pilBox;
 		}
 	}
-	hpil_init(modeEnabled, modeIP, modePIL_Box);
+	hpil_init(modeEnabled, modePIL_Box);
 }
 
 int shell_check_connectivity(void) {
@@ -2814,7 +2831,7 @@ int shell_read_frame(int *rx) {
 }
 
 static void shell_close_port() {
-	hpil_close(modeEnabled, modeIP, modePIL_Box);
+	hpil_close(modeEnabled, modePIL_Box);
 	shell_close_IP();
 	shell_close_serial();
 }

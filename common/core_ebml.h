@@ -161,7 +161,7 @@
  */
 
 
-#define _EBMLFree42Desc					"Free42 ebml state file"
+#define _EBMLFree42Desc					"Free42 ebml state"
 #define _EBMLFree42Version				1
 #define _EBMLFree42ReadVersion			1
 
@@ -188,11 +188,12 @@
 #define EBMLFree42StringElement			0x03			/* string, size in bytes as vint, ascii	string							*/
 #define EBMLFree42PhloatElement			0x04			/* phloat as binary, size in bytes as vint, value in little endianess	*/
 #define EBMLFree42BooleanElement		0x05			/* boolean, value encoded as variable size integer (0 or 1)				*/
+#define EBMLFree42BinaryElement			0x06			/* binary, size in bytes as vint, binary undefined						*/
 
 /*
  * Master document header
  */
-#define EBMLFree42						0x4672ee420		/* Free42 top master element, vint		*/
+#define EBMLFree42						0x4672ee42		/* Free42 top master element, vint		*/
 #define EBMLFree42Desc					0x0013			/* Free42 document description, string	*/
 #define EBMLFree42Version				0x0021			/* specs used to create the document	*/
 #define EBMLFree42ReadVersion			0x0031			/* minimum version to read the document	*/
@@ -248,7 +249,7 @@
 #define EBMLFree42ArgSize				0x2111			/* size of argument, vint						*/
 #define EBMLFree42ArgType				0x2121			/* type of argument, vint						*/
 #define EBMLFree42ArgLength				0x2131			/* length in arg struct, vint					*/
-#define EBMLFree42ArgTarget				0x2142			/* target in arg struct, vint					*/
+#define EBMLFree42ArgTarget				0x2142			/* target in arg struct, int					*/
 #define EBMLFree42ArgVal				0x2150			/* val as union in arg struct, variable type	*/
 
 /*
@@ -274,6 +275,7 @@
 #define EBMLFree42ShellVersion			0x3011			/* Element, version used to create this document, vint	*/
 #define EBMLFree42ShellReadVersion		0x3021			/* Element, minimum version to read this document, vint	*/
 #define EBMLFree42ShellOS				0x3033			/* Element, OS name, string								*/
+#define EBMLFree42ShellState			0x3046			/* Element, binary										*/
 
 
 /* 
@@ -329,9 +331,9 @@
 #define EL_entered_number			0x21400		// phloat
 #define EL_entered_string			0x21410		// string
 
-#define EL_pending_command			0x21480		// int
+#define EL_pending_command			0x21480		// int - argh!! check if should be converted to pgm
 #define EL_pending_command_arg		0x21490		// arg struct, high level
-#define EL_xeq_invisible			0x214a0		// int
+#define EL_xeq_invisible			0x214a0		// int - check again what it is...
 
 #define EL_incomplete_command				0x21500		// int
 #define EL_incomplete_ind					0x21510		// int
@@ -353,7 +355,7 @@
 #define EL_matedit_prev_appmenu				0x21640		// int
 
 #define EL_input_name						0x21680		// string
-#define EL_input_arg						0x21681		// arg struct, high level
+#define EL_input_arg						0x21690		// arg struct, high level
 
 #define EL_baseapp							0x21700		// int
 
@@ -404,7 +406,7 @@
  */
 
 // Solver
-#define El_solveVersion				0x23000		// int
+#define EL_solveVersion				0x23000		// int
 #define EL_solvePrgm_name			0x23010		// string
 #define EL_solveActive_prgm_name	0x23020		// string
 #define EL_solveKeep_running		0x23030		// int
@@ -432,7 +434,7 @@
 												// 0x238x0 enough place for upto 32 NUM_SHADOWS ?
 
 // Integrator
-#define El_integVersion				0x24000		// int
+#define EL_integVersion				0x24000		// int
 #define EL_integPrgm_name			0x24010		// string
 #define EL_integActive_prgm_name	0x24020		// string
 #define EL_integVar_name			0x24030		// string
@@ -463,7 +465,20 @@
 #define EL_integS					0x24800		// phloat
 												// 0x248x0 enough place for upto 32 ROMBK ?
 
+// hpil eXtensions
+#define EL_hpil_selected			0x2e000		// int
+#define EL_hpil_print				0x2e010		// int
+#define EL_hpil_disk				0x2e020		// int
+#define EL_hpil_plotter				0x2e030		// int,
+#define EL_hpil_prtAid				0x2e040		// int
+#define EL_hpil_dskAid				0x2e050		// int
+#define EL_hpil_modeEnabled			0x2e060		// bool
+#define EL_hpil_modeTransparent		0x2e070		// bool
+#define EL_hpil_modePIL_Box			0x2e080		// bool
+
+
 #define EL_off_enable_flag			0x2fff0		// only for iphone 
+
 
 /*
  * static size of variables elements, don't forget to adjust against header
@@ -480,13 +495,14 @@ bool ebmlWriteElBool(unsigned int elId, bool val);
 bool ebmlWriteElInt(unsigned int elId, int val);
 bool ebmlWriteElString(unsigned int elId, int len, char *val);
 bool ebmlWriteElPhloat(unsigned int elId, phloat* p);
+bool ebmlWriteElBinary(unsigned int elId, unsigned int l, void * b);
 bool ebmlWriteElArg(unsigned int elId, arg_struct *arg);
 
 bool ebmlWriteMasterHeader();
 bool ebmlWriteCoreDocument();
 bool ebmlWriteVarsDocument(unsigned int count);
 bool ebmlWriteProgsDocument(unsigned int count);
-bool ebmlWriteShellDocument(int len, char * OsVersion);
+bool ebmlWriteShellDocument(unsigned int version, unsigned int readVersion, unsigned int len, char * OsVersion);
 
 
 #endif

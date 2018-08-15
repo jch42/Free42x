@@ -107,7 +107,7 @@ static void reset_integ();
 bool persist_math() {
 int i, size;
     solve.version = SOLVE_VERSION;
-	if (!ebmlWriteElInt(El_solveVersion, solve.version)) {
+	if (!ebmlWriteElInt(EL_solveVersion, solve.version)) {
 		return false;
 	}
 	if (!ebmlWriteElString(EL_solvePrgm_name, solve.prgm_length, solve.prgm_name)) {
@@ -185,7 +185,7 @@ int i, size;
 	}
 
     integ.version = INTEG_VERSION;
-	if (!ebmlWriteElInt(El_integVersion, integ.version)) {
+	if (!ebmlWriteElInt(EL_integVersion, integ.version)) {
 		return false;
 	}
 	if (!ebmlWriteElString(EL_integPrgm_name, integ.prgm_length, integ.prgm_name)) {
