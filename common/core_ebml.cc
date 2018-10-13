@@ -154,7 +154,7 @@ int j, sz;
 	}
 	sz += j;
 	for (j = 0; j < sizeof(i); j++) {
-		b[sz++] = (unsigned char)((i >> (j * 8)) & 0xff);
+		b[sz++] = (unsigned char)((i >> ((sizeof(i) - j - 1) * 8)) & 0xff);
 	}
 	return sz;
 }
@@ -206,34 +206,6 @@ int j, sz;
 }
 
 /*
- * write sized master element header
- * - write master element
- * - write size Id (always master + 10) and value
- * - write buffer
- */
-bool ebmlFlushSizedMasterEl(int elId, int elSz, int bufSz, unsigned char *buf) {
-unsigned char elBuf[16];
-int sz, j;
-	j = ebml2VInt(elId, &elBuf[0]);
-	if (j == 0) {
-		return false;
-	}
-	sz = j;
-	j = ebmlWriteVInt(elId + 0x11, elSz, &elBuf[sz]);
-	if (j == 0) {
-		return false;
-	}
-	sz += j;
-	if (!shell_write_saved_state(elBuf, sz)) { 						
-		return false;
-	}
-	if (!shell_write_saved_state(buf, bufSz)) { 						
-		return false;
-	}
-	return true; 
-}
-
-/*
  * write sized element header
  * - write element Id
  * - write size value
@@ -247,34 +219,18 @@ int sz, j;
 		return false;
 	}
 	sz = j;
-	j = ebml2VInt(elSz, &elBuf[sz]);
+	if (elSz < 0) {
+		// unsized element
+		elBuf[sz] = 0xff;
+		j = 1;
+	}
+	else {
+		j = ebml2VInt(elSz, &elBuf[sz]);
+	}	
 	if (j == 0) {
 		return false;
 	}
 	sz += j;
-	if (!shell_write_saved_state(elBuf, sz)) { 						
-		return false;
-	}
-	if (!shell_write_saved_state(buf, bufSz)) { 						
-		return false;
-	}
-	return true; 
-}
-/*
- * write unsized master element header
- * - write master element
- * - write buffer
- */
-bool ebmlFlushEl(int elId, int elSz, int bufSz, unsigned char *buf) {
-unsigned char elBuf[16];
-int sz, j;
-	j = ebml2VInt(elId, &elBuf[0]);
-	if (j == 0) {
-		return false;
-	}
-	sz = j;
-	// unsized element tag, hum really needed ?
-	//elBuf[sz++] = 0xff;
 	if (!shell_write_saved_state(elBuf, sz)) { 						
 		return false;
 	}
@@ -483,7 +439,7 @@ int type, i, j;
 				return false;
 			}
 			sz += j;
-			if ((sz >= (sizeof(buf) - EbmlPhloatSZ)) || (i == msz)) {
+			if ((sz >= (sizeof(buf) - EbmlPhloatSZ)) || (i == msz - 1)) {
 				if (!shell_write_saved_state(buf, sz)) {
 					return false;
 				}
@@ -498,7 +454,7 @@ int type, i, j;
 				return false;
 			}
 			sz += j;
-			if ((sz >= (sizeof(buf) - EbmlPhloatSZ)) || (i == msz * 2)) {
+			if ((sz >= (sizeof(buf) - EbmlPhloatSZ)) || (i == 2 * msz - 1)) {
 				if (!shell_write_saved_state(buf, sz)) {
 					return false;
 				}
@@ -519,9 +475,10 @@ int length;
 char c;
 int done;
 int4 pc;
-	szPgm = core_program_size(prgm_index);
+	// core_program_size ignore (implicit ?) END...
+	szPgm = core_program_size(prgm_index) + 3;
 	length = 0;
-    for (i = labels_count - 1; i >= 0; i--) {
+    for (i = 0; i < labels_count; i++) {
 		if (labels[i].prgm == prgm_index) {
 			length = labels[i].length;
 			break;
@@ -534,6 +491,11 @@ int4 pc;
 	}
 	sz += j;
 	j = ebml2VInt(EBMLFree42ProgData, &buf[sz]);
+	if (j == 0) {
+		return false;
+	}
+	sz += j;
+	j = ebml2VInt(szPgm, &buf[sz]);
 	if (j == 0) {
 		return false;
 	}
@@ -562,7 +524,7 @@ bool ebmlWriteElInt(unsigned int elId, int val) {
 unsigned char buf[16];
 int j;
 	for (j = 0; j < sizeof(val); j++) {
-		buf[j] = (unsigned char)((val >> (j * 8)) & 0xff);
+		buf[j] = (unsigned char)((val >> ((sizeof(val) - j - 1) * 8)) & 0xff);
 	}
 	return ebmlFlushSizedEl((elId & ~0x0f) + EBMLFree42IntElement, j, j, buf);
 }
@@ -694,7 +656,7 @@ int j, sz;
 		return false;
 	}
 	sz += j;
-	return ebmlFlushEl(EBMLFree42, sz, sz, buf);
+	return ebmlFlushSizedEl(EBMLFree42, -1, sz, buf);
 }
 
 /*
@@ -714,7 +676,7 @@ int j, sz;
 		return false;
 	}
 	sz += j;
-	return ebmlFlushEl(EBMLFree42Core, sz, sz, buf);
+	return ebmlFlushSizedEl(EBMLFree42Core, -1, sz, buf);
 }
 
 /*
@@ -739,7 +701,7 @@ int j, sz;
 		return false;
 	}
 	sz += j;
-	return ebmlFlushEl(EBMLFree42Vars, sz, sz, buf);
+	return ebmlFlushSizedEl(EBMLFree42Vars, -1, sz, buf);
 }
 
 /*
@@ -764,7 +726,7 @@ int j, sz;
 		return false;
 	}
 	sz += j;
-	return ebmlFlushEl(EBMLFree42Progs, sz, sz, buf);
+	return ebmlFlushSizedEl(EBMLFree42Progs, -1, sz, buf);
 }
 
 /*
@@ -789,81 +751,13 @@ int j, sz;
 		return false;
 	}
 	sz += j;
-	return ebmlFlushEl(EBMLFree42Shell, sz, sz, buf);
+	return ebmlFlushSizedEl(EBMLFree42Shell, -1, sz, buf);
 }
-
 
 /*
-int ebmlWriteProgramHeader(int l, unsigned char *b) {
-int size, bufPtr;
-	size = ebmlWriteVInt(EL_ID_PROGRAM, &b[0]);
-	if (size) {
-		bufPtr = size;
-		size = ebmlWriteVInt(unsigned int(l), &b[bufPtr]);
-		bufPtr += size;
-	}
-	return (size == 0) ? size : bufPtr;
+ * Write end of documents for unsized documents
+ */
+bool ebmlWriteEndOfDocument() {
+unsigned char c;
+	return ebmlFlushSizedEl(EBMLFree42EOD, 0, 0, &c);
 }
-*/
-
-
-
-
-/*
-int ebmlReadVInt(unsigned int* i, unsigned char* b) {
-int size = 0;
-	if (b[0] & 0x80) {
-		size = 1;
-		*i = (unsigned int)(b[0]) & 0x07f;
-	}
-	else if (b[0] & 0x40) {
-		size = 2;
-		*i = (((unsigned int)(b[0]) & 0x3f) << 8) + (unsigned int)b[1];
-	}
-	else if (b[0] & 0x20) {
-		size = 3;
-		*i = (((unsigned int)(b[0] & 0x1f)) << 8) + (((unsigned int)b[1]) << 16) + (unsigned int)b[0];
-	}
-	else if (b[0] & 0x10) {
-		size = 4;
-		*i = (((unsigned int)(b[0] & 0x0f)) << 8) + (((unsigned int)b[1]) << 24) + (((unsigned int)b[2]) << 16) + (unsigned int)b[0];
-	}
-	return size;
-}
-
-
-
-/*
-int ebmlWriteVarCount(unsigned int i, unsigned char* b) {
-int sz, bufPtr;
-	sz = ebmlWriteVInt(EBMLFree42VarsCount, &b[0]);
-	if (sz) {
-		bufPtr = sz;
-		sz = ebmlWriteVInt(i, &b[sz]);
-		bufPtr += sz;
-	}
-	return (sz == 0) ? sz : bufPtr;
-}
-/*
- * write unsized master element header
- * - write master element
- * - write buffer
- /*
-bool ebmlFlushEl(int elId, int elSz, int bufSz, unsigned char *buf) {
-unsigned char elBuf[16];
-int sz, j;
-	j = ebml2VInt(elId, &elBuf[0]);
-	if (j == 0) {
-		return false;
-	}
-	sz = j;
-	if (!shell_write_saved_state(elBuf, sz)) { 						
-		return false;
-	}
-	if (!shell_write_saved_state(buf, bufSz)) { 						
-		return false;
-	}
-	return true; 
-}
-
-*/

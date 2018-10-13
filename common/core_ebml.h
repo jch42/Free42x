@@ -277,6 +277,10 @@
 #define EBMLFree42ShellOS				0x3033			/* Element, OS name, string								*/
 #define EBMLFree42ShellState			0x3046			/* Element, binary										*/
 
+/*
+ * end of document for unsized documents
+ */
+#define EBMLFree42EOD					0x7def			/* Tag for end of unsized document						*/
 
 /* 
  * core parameters
@@ -503,6 +507,7 @@ bool ebmlWriteCoreDocument();
 bool ebmlWriteVarsDocument(unsigned int count);
 bool ebmlWriteProgsDocument(unsigned int count);
 bool ebmlWriteShellDocument(unsigned int version, unsigned int readVersion, unsigned int len, char * OsVersion);
+bool ebmlWriteEndOfDocument();
 
 
 #endif

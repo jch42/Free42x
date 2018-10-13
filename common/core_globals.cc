@@ -2530,7 +2530,7 @@ int i;
 		return;
 	}
 	for (i = 0; i < 6; i++) {
-		if (!ebmlWriteElString(EL_varmenu_label + i * 16, varmenu_labellength[i], varmenu_labeltext[i])) {
+		if (!ebmlWriteElString(EL_varmenu_label + (i << 4), varmenu_labellength[i], varmenu_labeltext[i])) {
 			return;
 		}
 	}
@@ -2542,12 +2542,12 @@ int i;
 		return;
 	}
 	for (i = 0; i < MAX_RTNS; i++) {
-		if (!ebmlWriteElInt(EL_rtn_prgm + i, rtn_prgm[i])) {
+		if (!ebmlWriteElInt(EL_rtn_prgm + (i << 4), rtn_prgm[i])) {
 			return;
 		}
 	}
 	for (i = 0; i < MAX_RTNS; i++) {
-		if (!ebmlWriteElInt(EL_rtn_pc + i, rtn_pc[i])) {
+		if (!ebmlWriteElInt(EL_rtn_pc + (i << 4), rtn_pc[i])) {
 			return;
 		}
 	}
@@ -2591,6 +2591,9 @@ int i;
 	if (!persist_hpil()) {
 		return;
 	}
+	if (!ebmlWriteEndOfDocument()) {
+        return;
+	}
 
 	// persistance of variables
 	if (!ebmlWriteVarsDocument(vars_count)) {
@@ -2601,6 +2604,9 @@ int i;
 			return;
 		}
 	}
+	if (!ebmlWriteEndOfDocument()) {
+        return;
+	}
 
 	// persistance of programs
 	if (!ebmlWriteProgsDocument(prgms_count)) {
@@ -2610,6 +2616,9 @@ int i;
 		if (!ebmlWriteProgram(i, prgms)) {
 			return;
 		}
+	}
+	if (!ebmlWriteEndOfDocument()) {
+        return;
 	}
 }
 

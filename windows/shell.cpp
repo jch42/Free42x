@@ -1631,14 +1631,20 @@ static void Quit() {
                 state.printOutPlacementValid = 1;
             }
         }
-        write_shell_state();
     }
-    core_quit();
-    if (statefile != NULL)
-        fclose(statefile);
 
-    if (print_txt != NULL)
+	ebmlWriteMasterHeader();
+	write_shell_state();
+	core_quit();
+	ebmlWriteEndOfDocument();
+
+	if (statefile != NULL) {
+        fclose(statefile);
+	}
+
+	if (print_txt != NULL) {
         fclose(print_txt);
+	}
     
     if (print_gif != NULL) {
         shell_finish_gif(gif_seeker, gif_writer);
@@ -2416,16 +2422,15 @@ static int write_shell_state() {
     int4 version = FREE42_VERSION;
     int4 state_size = sizeof(state_type);
     int4 state_version = SHELL_VERSION;
-	if (!ebmlWriteMasterHeader()) {
-		return 0;
-	}
 	if (!ebmlWriteShellDocument(state_version, state_version, sizeof(SHELL_OS)-1, SHELL_OS)) {
 		return 0;
 	}
 	if (!ebmlWriteElBinary(EBMLFree42ShellState, state_size, &state)) {
 		return 0;
 	}
-
+	if (!ebmlWriteEndOfDocument()) {
+		return 0;
+	}
 
     //if (!shell_write_saved_state(&magic, sizeof(int4)))
     //    return 0;

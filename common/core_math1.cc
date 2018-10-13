@@ -171,12 +171,12 @@ int i, size;
 		return false;
 	}
 	for (i = 0; i < NUM_SHADOWS; i++) {
-		if (!ebmlWriteElString(EL_solveShadow_name + i, solve.shadow_length[i], solve.shadow_name[i])) {
+		if (!ebmlWriteElString(EL_solveShadow_name + (i << 4), solve.shadow_length[i], solve.shadow_name[i])) {
 			return false;
 		}
 	}
 	for (i = 0; i < NUM_SHADOWS; i++) {
-		if (!ebmlWriteElPhloat(EL_solveShadow_value + i, &solve.shadow_value[i])) {
+		if (!ebmlWriteElPhloat(EL_solveShadow_value + (i << 4), &solve.shadow_value[i])) {
 			return false;
 		}
 	}
@@ -243,12 +243,13 @@ int i, size;
 		return false;
 	}
 	for (i = 0; i < ROMB_K ; i++) {
-		if (!ebmlWriteElPhloat(EL_integC + i, &integ.c[i])) {
+		if (!ebmlWriteElPhloat(EL_integC + (i << 4), &integ.c[i])) {
 			return false;
 		}
+
 	}
 	for (i = 0; i < (ROMB_K + 1); i++) {
-		if (!ebmlWriteElPhloat(EL_integS + i, &integ.s[i])) {
+		if (!ebmlWriteElPhloat(EL_integS + (i << 4), &integ.s[i])) {
 			return false;
 		}
 	}
