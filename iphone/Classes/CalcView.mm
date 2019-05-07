@@ -72,8 +72,6 @@ static void quit2(bool really_quit);
 static void shell_keydown();
 static void shell_keyup();
 
-static int skin_width, skin_height;
-
 static int read_shell_state(int *version);
 static void init_shell_state(int version);
 static int write_shell_state();
@@ -310,11 +308,12 @@ static CalcView *calcView = nil;
 
 - (void) touchesBegan3 {
     TRACE("touchesBegan3");
-    // TODO -- a separate Keyboard Clicks setting in Preferences would be better;
-    // figuring out how to read Settings -> General -> Sounds -> Keyboard Clicks
-    // would be better still!
-    if (flags.f.audio_enable)
+    if (state.keyClicks)
         AudioServicesPlaySystemSound(1105);
+    if (state.hapticFeedback) {
+        UIImpactFeedbackGenerator *fbgen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+        [fbgen impactOccurred];
+    }
     macro = skin_find_macro(ckey);
     shell_keydown();
     mouse_key = 1;
@@ -404,6 +403,25 @@ static CalcView *calcView = nil;
     quit2(true);
 }
 
+- (void) layoutSubviews {
+    long w, h;
+    skin_load(&w, &h);
+    core_repaint_display();
+    [CalcView repaint];
+}
+
++ (BOOL) isPortrait {
+    return calcView.bounds.size.height > calcView.bounds.size.width;
+}
+
++ (CGFloat) width {
+    return calcView.bounds.size.width;
+}
+
++ (CGFloat) height {
+    return calcView.bounds.size.height;
+}
+
 + (void) enterBackground {
     TRACE("enterBackground");
     quit2(false);
@@ -438,6 +456,7 @@ static CalcView *calcView = nil;
 
 - (void) awakeFromNib {
     TRACE("awakeFromNib");
+    [super awakeFromNib];
     calcView = self;
     statefile = fopen("config/state", "r");
     int init_mode, version;
@@ -455,8 +474,6 @@ static CalcView *calcView = nil;
 
     long w, h;
     skin_load(&w, &h);
-    skin_width = (int) w;
-    skin_height = (int) h;
     
     core_init(init_mode, version);
     if (statefile != NULL) {
@@ -711,7 +728,19 @@ static void init_shell_state(int version) {
             state.alwaysOn = 0;
             /* fall through */
         case 2:
-            /* current version (SHELL_VERSION = 1),
+            state.keyClicks = 1;
+            /* fall through */
+        case 3:
+            state.hapticFeedback = 0;
+            /* fall through */
+        case 4:
+            strcpy(state.landscapeSkinName, "Landscape");
+            state.orientationMode = 0;
+            state.maintainSkinAspect[0] = 1;
+            state.maintainSkinAspect[1] = 1;
+            /* fall through */
+        case 5:
+            /* current version (SHELL_VERSION = 5),
              * so nothing to do here since everything
              * was initialized from the state file.
              */

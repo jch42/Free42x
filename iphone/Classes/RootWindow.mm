@@ -15,45 +15,12 @@
  * along with this program; if not, see http://www.gnu.org/licenses/.
  *****************************************************************************/
 
-#import "AboutView.h"
-#import "Free42AppDelegate.h"
-#import "RootViewController.h"
+#import "RootWindow.h"
 
+@implementation RootWindow
 
-@implementation AboutView
-
-@synthesize doneButton;
-@synthesize versionLabel;
-@synthesize copyrightLabel;
-
-- (id)initWithFrame:(CGRect)frame {
-    if (self = [super initWithFrame:frame]) {
-        // Initialization code
-    }
-    return self;
+- (void) layoutSubviews {
+    [self.rootViewController layoutSubViews];
 }
-
-- (void) awakeFromNib {
-    [super awakeFromNib];
-    [versionLabel setText:[NSString stringWithFormat:@"Free42 %s", [Free42AppDelegate getVersion]]];
-    [copyrightLabel setText:@"© 2004-2019 Thomas Okken"];
-}
-
-- (void)drawRect:(CGRect)rect {
-    // Drawing code
-}
-
-- (void) raised {
-    // start-up code
-}
-
-- (IBAction) done {
-    [RootViewController showMain];
-}
-
-- (void)dealloc {
-    [super dealloc];
-}
-
 
 @end
