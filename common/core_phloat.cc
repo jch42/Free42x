@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -36,6 +36,7 @@ phloat POS_HUGE_PHLOAT;
 phloat NEG_HUGE_PHLOAT;
 phloat POS_TINY_PHLOAT;
 phloat NEG_TINY_PHLOAT;
+phloat NAN_PHLOAT;
 
 
 /* Note: this function does not handle infinities or NaN */
@@ -82,7 +83,7 @@ static void bcdfloat_old2new(void *bcd) {
 
 
 void phloat_init() {
-    BID_UINT128 posinf, neginf, zero, poshuge, neghuge, postiny, negtiny;
+    BID_UINT128 posinf, neginf, zero, poshuge, neghuge, postiny, negtiny, nan;
     bid128_from_string(&posinf, (char *) "+Inf");
     bid128_from_string(&neginf, (char *) "-Inf");
     int z = 0;
@@ -95,6 +96,8 @@ void phloat_init() {
     NEG_HUGE_PHLOAT = neghuge;
     POS_TINY_PHLOAT = postiny;
     NEG_TINY_PHLOAT = negtiny;
+    bid128_div(&nan, &zero, &zero);
+    NAN_PHLOAT = nan;
 }
 
 int string2phloat(const char *buf, int buflen, phloat *d) {
@@ -110,7 +113,7 @@ int string2phloat(const char *buf, int buflen, phloat *d) {
     // First, convert from HP-42S format to bcdfloat format:
     // strip thousands separators, convert comma to dot if
     // appropriate, and convert char(24) to 'E'.
-    // Also, reject numbers with more than 12 digits in the mantissa.
+    // Also, reject numbers with more than MAX_MANT_DIGITS digits in the mantissa.
     char buf2[100];
     int buflen2 = 0;
     char sep = flags.f.decimal_point ? ',' : '.';
@@ -129,7 +132,7 @@ int string2phloat(const char *buf, int buflen, phloat *d) {
             in_mant = false;
         } else if (c >= '0' && c <= '9') {
             if (in_mant) {
-                if (++mantdigits > 12)
+                if (++mantdigits > MAX_MANT_DIGITS)
                     return 5;
                 if (c != '0')
                     zero = false;
@@ -181,6 +184,14 @@ Phloat::Phloat(int numer, int denom) {
 }
 
 /* public */
+Phloat::Phloat(int8 numer, int8 denom) {
+    BID_UINT128 n, d;
+    bid128_from_int64(&n, &numer);
+    bid128_from_int64(&d, &denom);
+    bid128_div(&val, &n, &d);
+}
+
+/* public */
 Phloat::Phloat(int i) {
     bid128_from_int32(&val, &i);
 }
@@ -192,7 +203,9 @@ Phloat::Phloat(int8 i) {
 
 /* public */
 Phloat::Phloat(double d) {
-    binary64_to_bid128(&val, &d);
+    BID_UINT64 tmp;
+    binary64_to_bid64(&tmp, &d);
+    bid64_to_bid128(&val, &tmp);
 }
 
 /* public */
@@ -214,7 +227,9 @@ Phloat Phloat::operator=(int8 i) {
 
 /* public */
 Phloat Phloat::operator=(double d) {
-    binary64_to_bid128(&val, &d);
+    BID_UINT64 tmp;
+    binary64_to_bid64(&tmp, &d);
+    bid64_to_bid128(&val, &tmp);
     return *this;
 }
 
@@ -702,8 +717,10 @@ Phloat operator/(int x, Phloat y) {
 
 Phloat operator/(double x, Phloat y) {
     BID_UINT128 xx, res;
-    binary64_to_bid128(&xx, &x);
-    bid128_mul(&res, &xx, &y.val);
+    BID_UINT64 tmp;
+    binary64_to_bid64(&tmp, &x);
+    bid64_to_bid128(&xx, &tmp);
+    bid128_div(&res, &xx, &y.val);
     return Phloat(res);
 }
 
@@ -730,35 +747,6 @@ bool operator==(int4 x, Phloat y) {
 }
 
 Phloat PI("3.141592653589793238462643383279503");
-
-BID_UINT128 double_to_12_digit_decimal(double d) {
-    if (d == 0) {
-        BID_UINT128 res;
-        int zero = 0;
-        bid128_from_int32(&res, &zero);
-        return res;
-    }
-    bool neg = d < 0;
-    if (neg)
-        d = -d;
-    BID_UINT128 bd, exp, wiper, temp, temp2;
-    binary64_to_bid128(&bd, &d);
-    bid128_log10(&temp, &bd);
-    bid128_round_integral_negative(&exp, &temp);
-    int twenty_two = 22;
-    bid128_from_int32(&temp, &twenty_two);
-    bid128_add(&temp2, &exp, &temp);
-    int ten = 10;
-    bid128_from_int32(&temp, &ten);
-    bid128_pow(&wiper, &temp, &temp2);
-    bid128_add(&temp, &bd, &wiper);
-    bid128_sub(&bd, &temp, &wiper);
-    if (neg) {
-        bid128_negate(&temp, &bd);
-        return temp;
-    } else
-        return bd;
-}
 
 void update_decimal(BID_UINT128 *val) {
     if (state_file_number_format == NUMBER_FORMAT_BID128)
@@ -791,6 +779,8 @@ void phloat_init() {
     POS_TINY_PHLOAT = d;
 #endif
     NEG_TINY_PHLOAT = -POS_TINY_PHLOAT;
+    double zero = 0.0;
+    NAN_PHLOAT = zero / 0.0;
 }
 
 int string2phloat(const char *buf, int buflen, phloat *d) {
@@ -848,8 +838,8 @@ int string2phloat(const char *buf, int buflen, phloat *d) {
                 continue;
             }
             /* Once we get here, c should be a digit */
-            if (++mant_digits > 12)
-                /* Too many digits! We only allow the user to enter 12. */
+            if (++mant_digits > MAX_MANT_DIGITS)
+                /* Too many digits! We only allow the user to enter 16 (binary) or 34 (decimal). */
                 return 5;
             if (c == '0' && skipping_zeroes)
                 continue;
@@ -968,7 +958,7 @@ double decimal2double(void *data, bool pin_magnitude /* = false */) {
 
 
 int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
-                         int dispmode, int thousandssep) {
+                         int dispmode, int thousandssep, int max_mant_digits) {
     if (pd == 0)
         pd = 0; // Suppress signed zero
 
@@ -1027,7 +1017,8 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
         decimal_after_all:;
     }
 
-    char bcd_mantissa[16] = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+    char bcd_mantissa[MAX_MANT_DIGITS];
+    memset(bcd_mantissa, 0, MAX_MANT_DIGITS);
     int bcd_exponent = 0;
     int bcd_mantissa_sign = 0;
 
@@ -1074,16 +1065,21 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
             in_leading_zeroes = false;
         if (!seen_dot)
             exp_offset++;
-        if (mant_index < 16)
+        if (mant_index < MAX_MANT_DIGITS)
             bcd_mantissa[mant_index++] = c - '0';
     }
+
+    int max_int_digits = max_mant_digits;
+    int max_frac_digits = MAX_MANT_DIGITS + max_int_digits - 1;
 
     if (dispmode == 0 || dispmode == 3) {
 
         /* FIX and ALL modes */
 
-        char norm_ip[12] = "\0\0\0\0\0\0\0\0\0\0\0";
-        char norm_fp[27] = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        char norm_ip[MAX_MANT_DIGITS];
+        memset(norm_ip, 0, max_int_digits);
+        char norm_fp[MAX_MANT_DIGITS * 2 - 1];
+        memset(norm_fp, 0, max_frac_digits);
 
         int i;
         int int_digits, frac_digits;
@@ -1092,13 +1088,13 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
         if (dispmode == 0)
             digits2 = digits;
         else
-            digits2 = 11;
+            digits2 = max_int_digits - 1;
 
-        if (bcd_exponent > 11 || -bcd_exponent > digits2 + 1)
+        if (bcd_exponent >= max_int_digits || -bcd_exponent > digits2 + 1)
             goto do_sci;
-        for (i = 0; i < 16; i++) {
+        for (i = 0; i < MAX_MANT_DIGITS; i++) {
             if (i <= bcd_exponent)
-                norm_ip[11 - bcd_exponent + i] = bcd_mantissa[i];
+                norm_ip[max_int_digits - 1 - bcd_exponent + i] = bcd_mantissa[i];
             else
                 norm_fp[-1 - bcd_exponent + i] = bcd_mantissa[i];
         }
@@ -1114,11 +1110,11 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
              * in which case I fall back on SCI.
              */
             int carry;
-            int visdigits = 11 - bcd_exponent;
+            int visdigits = max_int_digits - 1 - bcd_exponent;
             if (visdigits > digits)
                 visdigits = digits;
             carry = norm_fp[visdigits] >= 5;
-            for (i = visdigits; i < 27; i++)
+            for (i = visdigits; i < max_frac_digits; i++)
                 norm_fp[i] = 0;
             if (!carry)
                 goto done_rounding;
@@ -1130,7 +1126,7 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
                 } else
                     norm_fp[i] = c - 10;
             }
-            for (i = 11; i >= 0; i--) {
+            for (i = max_int_digits - 1; i >= 0; i--) {
                 char c = norm_ip[i] + 1;
                 if (c < 10) {
                     norm_ip[i] = c;
@@ -1143,21 +1139,21 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
              */
             goto do_sci;
             done_rounding:;
-        } else {
-            /* ALL mode: for HP-42S compatibility, round to 12
+        } else if (max_int_digits < MAX_MANT_DIGITS) {
+            /* ALL mode: for HP-42S compatibility, round to max_int_digits
              * digits before proceeding.
              */
             int f = 1000;
-            for (i = 0; i < 39; i++) {
-                char c = i < 12 ? norm_ip[i] : norm_fp[i - 12];
+            for (i = 0; i < max_int_digits + max_frac_digits; i++) {
+                char c = i < max_int_digits ? norm_ip[i] : norm_fp[i - max_int_digits];
                 if (c != 0 && f == 1000)
                     f = i;
-                if (i == f + 12) {
+                if (i == f + max_int_digits) {
                     int carry = c >= 5;
                     if (carry) {
                         int j;
                         for (j = i - 1; j >= 0; j--) {
-                            char c2 = j < 12 ? norm_ip[j] : norm_fp[j - 12];
+                            char c2 = j < max_int_digits ? norm_ip[j] : norm_fp[j - max_int_digits];
                             c2++;
                             if (c2 < 10)
                                 carry = 0;
@@ -1165,25 +1161,25 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
                                 c2 -= 10;
                                 carry = 1;
                             }
-                            if (j < 12)
+                            if (j < max_int_digits)
                                 norm_ip[j] = c2;
                             else
-                                norm_fp[j - 12] = c2;
+                                norm_fp[j - max_int_digits] = c2;
                             if (!carry)
                                 break;
                         }
                         if (carry)
-                            /* Rounding is making the integer part 13 digits
+                            /* Rounding is making the integer part max_int_digits + 1 digits
                              * long; must go to SCI mode.
                              */
                             goto do_sci;
                     }
                 }
-                if (i >= f + 12) {
-                    if (i < 12)
+                if (i >= f + max_int_digits) {
+                    if (i < max_int_digits)
                         norm_ip[i] = 0;
                     else
-                        norm_fp[i - 12] = 0;
+                        norm_fp[i - max_int_digits] = 0;
                 }
             }
         }
@@ -1193,7 +1189,7 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
             /* Make sure that nonzero numbers are not
              * displayed as zero because of the rounding.
              */
-            for (i = 0; i < 12; i++)
+            for (i = 0; i < max_int_digits; i++)
                 if (norm_ip[i] != 0)
                     goto fix_ok;
             for (i = 0; i < digits2; i++)
@@ -1206,16 +1202,16 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
             fix_ok:
             if (dispmode == 3) {
                 /* Make sure we're not throwing away anything in ALL mode */
-                for (i = 11; i < 27; i++)
+                for (i = max_int_digits - 1; i < max_frac_digits; i++)
                     if (norm_fp[i] != 0)
                         goto do_sci;
             }
         }
 
         int_digits = 1;
-        for (i = 0; i < 12; i++)
+        for (i = 0; i < max_int_digits; i++)
             if (norm_ip[i] != 0) {
-                int_digits = 12 - i;
+                int_digits = max_int_digits - i;
                 break;
             }
 
@@ -1226,19 +1222,19 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
             if (thousandssep && i % 3 == 2 && i != int_digits - 1)
                 char2buf(buf, buflen, &chars_so_far,
                                 (char) (flags.f.decimal_point ? ',' : '.'));
-            char2buf(buf, buflen, &chars_so_far, (char)('0' + norm_ip[11 - i]));
+            char2buf(buf, buflen, &chars_so_far, (char)('0' + norm_ip[max_int_digits - 1 - i]));
         }
 
         if (dispmode == 0)
             frac_digits = digits;
         else {
             frac_digits = 0;
-            for (i = 0; i < 27; i++)
+            for (i = 0; i < max_frac_digits; i++)
                 if (norm_fp[i] != 0)
                     frac_digits = i + 1;
         }
-        if (frac_digits + int_digits > 12)
-            frac_digits = 12 - int_digits;
+        if (frac_digits + int_digits > max_int_digits)
+            frac_digits = max_int_digits - int_digits;
 
         if (frac_digits > 0 || (dispmode == 0 && thousandssep)) {
             char2buf(buf, buflen, &chars_so_far,
@@ -1256,18 +1252,18 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
 
         int m_digits;
         int carry;
-        char norm_mantissa[16];
+        char norm_mantissa[MAX_MANT_DIGITS];
         int norm_exponent, e3;
         int i;
 
         do_sci:
 
-        for (i = 0; i < 16; i++)
+        for (i = 0; i < MAX_MANT_DIGITS; i++)
             norm_mantissa[i] = bcd_mantissa[i];
         norm_exponent = bcd_exponent;
         
         if (dispmode == 3) {
-            /* Round to 12 digits before doing anything else;
+            /* Round to max_int_digits digits before doing anything else;
              * this is needed to handle mantissas like 9.99999999999999,
              * which would otherwise end up getting displayed as
              * 10.0000000000 instead of 10.
@@ -1275,11 +1271,12 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
 
             sci_all_round:
 
-            carry = norm_mantissa[12] >= 5;
-            for (i = 12; i < 16; i++)
+            carry = max_int_digits < MAX_MANT_DIGITS
+                    && norm_mantissa[max_int_digits] >= 5;
+            for (i = max_int_digits; i < MAX_MANT_DIGITS; i++)
                 norm_mantissa[i] = 0;
             if (carry) {
-                for (i = 11; i >= 0; i--) {
+                for (i = max_int_digits - 1; i >= 0; i--) {
                     char c = norm_mantissa[i] + carry;
                     if (c < 10) {
                         norm_mantissa[i] = c;
@@ -1298,14 +1295,14 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
                 * 0.45, twice -- you get first 0.5, then 1... Oops).
                 * So, we start over.
                 */
-                for (i = 0; i < 15; i++)
+                for (i = 0; i < MAX_MANT_DIGITS - 1; i++)
                     norm_mantissa[i + 1] = bcd_mantissa[i];
                 norm_mantissa[0] = 0;
                 norm_exponent = bcd_exponent + 1;
                 goto sci_all_round;
             }
             m_digits = 0;
-            for (i = 11; i >= 0; i--)
+            for (i = max_int_digits - 1; i >= 0; i--)
                 if (norm_mantissa[i] != 0) {
                     m_digits = i;
                     break;
@@ -1314,8 +1311,9 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
             m_digits = digits;
 
             sci_round:
-            carry = norm_mantissa[m_digits + 1] >= 5;
-            for (i = m_digits + 1; i < 16; i++)
+            carry = m_digits + 1 < MAX_MANT_DIGITS
+                    && norm_mantissa[m_digits + 1] >= 5;
+            for (i = m_digits + 1; i < MAX_MANT_DIGITS; i++)
                 norm_mantissa[i] = 0;
             if (carry) {
                 for (i = m_digits; i >= 0; i--) {
@@ -1337,7 +1335,7 @@ int phloat2string(phloat pd, char *buf, int buflen, int base_mode, int digits,
                 * 0.45, twice -- you get first 0.5, then 1... Oops).
                 * So, we start over.
                 */
-                for (i = 0; i < 15; i++)
+                for (i = 0; i < MAX_MANT_DIGITS - 1; i++)
                     norm_mantissa[i + 1] = bcd_mantissa[i];
                 norm_mantissa[0] = 0;
                 norm_exponent = bcd_exponent + 1;

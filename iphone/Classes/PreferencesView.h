@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -22,13 +22,16 @@
     UISwitch *singularMatrixSwitch;
     UISwitch *matrixOutOfRangeSwitch;
     UISwitch *autoRepeatSwitch;
+    UISwitch *alwaysOnSwitch;
+    UISwitch *keyClicksSwitch;
+    UISwitch *hapticFeedbackSwitch;
+    UISegmentedControl *orientationSelector;
+    UISwitch *maintainSkinAspectSwitch;
     UISwitch *printToTextSwitch;
     UITextField *printToTextField;
-    UISwitch *rawTextSwitch;
     UISwitch *printToGifSwitch;
     UITextField *printToGifField;
     UITextField *maxGifLengthField;
-    UISwitch *popupKeyboardSwitch;
     UIScrollView *scrollView;
     UIView *contentView;
     UITextField *activeField;
@@ -38,13 +41,16 @@
 @property (nonatomic, retain) IBOutlet UISwitch *singularMatrixSwitch;
 @property (nonatomic, retain) IBOutlet UISwitch *matrixOutOfRangeSwitch;
 @property (nonatomic, retain) IBOutlet UISwitch *autoRepeatSwitch;
+@property (nonatomic, retain) IBOutlet UISwitch *alwaysOnSwitch;
+@property (nonatomic, retain) IBOutlet UISwitch *keyClicksSwitch;
+@property (nonatomic, retain) IBOutlet UISwitch *hapticFeedbackSwitch;
+@property (nonatomic, retain) IBOutlet UISegmentedControl *orientationSelector;
+@property (nonatomic, retain) IBOutlet UISwitch *maintainSkinAspectSwitch;
 @property (nonatomic, retain) IBOutlet UISwitch *printToTextSwitch;
 @property (nonatomic, retain) IBOutlet UITextField *printToTextField;
-@property (nonatomic, retain) IBOutlet UISwitch *rawTextSwitch;
 @property (nonatomic, retain) IBOutlet UISwitch *printToGifSwitch;
 @property (nonatomic, retain) IBOutlet UITextField *printToGifField;
 @property (nonatomic, retain) IBOutlet UITextField *maxGifLengthField;
-@property (nonatomic, retain) IBOutlet UISwitch *popupKeyboardSwitch;
 @property (nonatomic, retain) IBOutlet UIScrollView *scrollView;
 @property (nonatomic, retain) IBOutlet UIView *contentView;
 

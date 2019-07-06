@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -148,6 +148,7 @@ static int ann_run = 0;
 static int ann_battery = 0;
 static int ann_g = 0;
 static int ann_rad = 0;
+static UINT ann_print_timer = 0;
 
 
 // Foward declarations of functions included in this code module:
@@ -270,7 +271,7 @@ static void MyRegisterClass(HINSTANCE hInstance)
     wcex1.hbrBackground = (HBRUSH) (COLOR_WINDOW+1);
     wcex1.lpszMenuName  = (LPCSTR) IDC_FREE42;
     wcex1.lpszClassName = szMainWindowClass;
-    wcex1.hIconSm       = LoadIcon(wcex1.hInstance, (LPCTSTR) IDI_SMALL);
+    wcex1.hIconSm       = NULL;
 
     RegisterClassEx(&wcex1);
 
@@ -286,7 +287,7 @@ static void MyRegisterClass(HINSTANCE hInstance)
     wcex2.hbrBackground = (HBRUSH) (COLOR_WINDOW+1);
     wcex2.lpszMenuName  = NULL;
     wcex2.lpszClassName = szPrintOutWindowClass;
-    wcex2.hIconSm       = LoadIcon(wcex2.hInstance, (LPCTSTR) IDI_SMALL);
+    wcex2.hIconSm       = NULL;
 
     RegisterClassEx(&wcex2);
 }
@@ -883,6 +884,21 @@ static LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPAR
             }
             break;
         }
+        case WM_ACTIVATE: {
+            int p = LOWORD(wParam);
+            if (p == WA_INACTIVE)
+                // This is needed because when using Alt-Tab to leave
+                // Free42, Windows Vista and later don't send a key-up
+                // for the Alt key, with the result that the app only
+                // sees the key-down for Alt, and the menu bar remains
+                // stuck in Alt mode.
+                // (Windows Vista and 7 do do the right thing if the
+                // Windows Classic theme is active, but of course you
+                // can't depend on that theme being used, and in
+                // Windows 8 and later, it isn't available any more.)
+                PostMessage(hMainWnd, WM_SYSKEYUP, 18, 0);
+            goto do_default;
+        }
         default:
         do_default:
             return DefWindowProc(hWnd, message, wParam, lParam);
@@ -1013,12 +1029,15 @@ static LRESULT CALLBACK ExportProgram(HWND hDlg, UINT message, WPARAM wParam, LP
     switch (message) {
         case WM_INITDIALOG: {
             HWND list = GetDlgItem(hDlg, IDC_LIST1);
-            char buf[10000];
-            int count = core_list_programs(buf, 10000);
-            char *p = buf;
-            for (int i = 0; i < count; i++) {
-                SendMessage(list, LB_ADDSTRING, 0, (long) p);
-                p += strlen(p) + 1;
+            char *buf = core_list_programs();
+            if (buf != NULL) {
+                int count = ((buf[0] & 255) << 24) | ((buf[1] & 255) << 16) | ((buf[2] & 255) << 8) | (buf[3] & 255);
+                char *p = buf + 4;
+                for (int i = 0; i < count; i++) {
+                    SendMessage(list, LB_ADDSTRING, 0, (long) p);
+                    p += strlen(p) + 1;
+                }
+                free(buf);
             }
             return TRUE;
         }
@@ -1089,10 +1108,6 @@ static LRESULT CALLBACK Preferences(HWND hDlg, UINT message, WPARAM wParam, LPAR
                 SendMessage(ctl, BM_SETCHECK, 1, 0);
             }
             SetDlgItemText(hDlg, IDC_PRINTER_TXT_NAME, state.printerTxtFileName);
-            if (core_settings.raw_text) {
-                ctl = GetDlgItem(hDlg, IDC_RAW_TEXT);
-                SendMessage(ctl, BM_SETCHECK, 1, 0);
-            }
             if (state.printerToGifFile) {
                 ctl = GetDlgItem(hDlg, IDC_PRINTER_GIF);
                 SendMessage(ctl, BM_SETCHECK, 1, 0);
@@ -1142,13 +1157,11 @@ static LRESULT CALLBACK Preferences(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         print_txt = NULL;
                     }
                     strcpy(state.printerTxtFileName, buf);
-                    ctl = GetDlgItem(hDlg, IDC_RAW_TEXT);
-                    core_settings.raw_text = SendMessage(ctl, BM_GETCHECK, 0, 0) != 0;
                     ctl = GetDlgItem(hDlg, IDC_PRINTER_GIF);
                     state.printerToGifFile = SendMessage(ctl, BM_GETCHECK, 0, 0);
                     BOOL success;
                     int maxlen = (int) GetDlgItemInt(hDlg, IDC_PRINTER_GIF_HEIGHT, &success, TRUE);
-                    state.printerGifMaxLength = !success ? 256 : maxlen < 32 ? 32 : maxlen > 32767 ? 32767 : maxlen;
+                    state.printerGifMaxLength = !success ? 256 : maxlen < 16 ? 16 : maxlen > 32767 ? 32767 : maxlen;
                     GetDlgItemText(hDlg, IDC_PRINTER_GIF_NAME, buf, FILENAMELEN - 1);
                     len = strlen(buf);
                     if (len > 0 && (len < 4 || _stricmp(buf + len - 4, ".gif") != 0))
@@ -1158,6 +1171,7 @@ static LRESULT CALLBACK Preferences(HWND hDlg, UINT message, WPARAM wParam, LPAR
                         shell_finish_gif(gif_seeker, gif_writer);
                         fclose(print_gif);
                         print_gif = NULL;
+                        gif_seq = -1;
                     }
                     strcpy(state.printerGifFileName, buf);
                     // fall through
@@ -1204,6 +1218,7 @@ static int browse_file(HWND owner, char *title, int save, char *filter, char *de
     ofn.hwndOwner = owner;
     ofn.lpstrFilter = filter;
     ofn.lpstrCustomFilter = NULL;
+    ofn.nFilterIndex = 1;
     ofn.lpstrFile = buf;
     ofn.nMaxFile = buflen;
     ofn.lpstrFileTitle = NULL;
@@ -1363,30 +1378,48 @@ static void mapCalculatorKey() {
 static void copy() {
     if (!OpenClipboard(hMainWnd))
         return;
-    char buf[100];
-    core_copy(buf, 100);
-    int len = strlen(buf) + 1;
-    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, len);
+    char *buf = core_copy();
+    if (buf == NULL)
+        goto fail1;
+    int len = strlen(buf);
+    if (len == 0)
+        goto fail2;
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, buf, len + 1, NULL, 0);
+    if (wlen == 0)
+        goto fail2;
+    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, wlen * 2);
     if (h != NULL) {
-        void *p = GlobalLock(h);
-        memcpy(p, buf, len);
+        wchar_t *wbuf = (wchar_t *) GlobalLock(h);
+        MultiByteToWideChar(CP_UTF8, 0, buf, len, wbuf, wlen);
         GlobalUnlock(h);
         EmptyClipboard();
-        if (SetClipboardData(CF_TEXT, h) == NULL)
+        if (SetClipboardData(CF_UNICODETEXT, h) == NULL)
             GlobalFree(h);
     }
+    fail2:
+    free(buf);
+    fail1:
     CloseClipboard();
 }
 
 static void paste() {
     if (!OpenClipboard(hMainWnd))
         return;
-    HANDLE h = GetClipboardData(CF_TEXT);
+    HANDLE h = GetClipboardData(CF_UNICODETEXT);
     if (h != NULL) {
-        char *p = (char *) GlobalLock(h);
-        if (p != NULL) {
-            core_paste(p);
-            redisplay();
+        wchar_t *wbuf = (wchar_t *) GlobalLock(h);
+        if (wbuf != NULL) {
+            int wlen = GlobalSize(h) / 2;
+            int len = WideCharToMultiByte(CP_UTF8, 0, wbuf, wlen, NULL, 0, NULL, NULL);
+            if (len != 0) {
+                char *buf = (char *) malloc(len + 1);
+                if (buf != NULL) {
+                    WideCharToMultiByte(CP_UTF8, 0, wbuf, wlen, buf, len, NULL, NULL);
+                    buf[len] = 0;
+                    core_paste(buf);
+                    free(buf);
+                }
+            }
             GlobalUnlock(h);
         }
     }
@@ -1552,6 +1585,8 @@ static void show_printout() {
 static void export_program() {
     if (!DialogBox(hInst, (LPCTSTR)IDD_SELECTPROGRAM, hMainWnd, (DLGPROC)ExportProgram))
         return;
+    if (sel_prog_count == 0)
+        return;
     /* The sel_prog_count global now has the number of selected items;
      * sel_prog_list is an array of integers containing the item numbers.
      */
@@ -1571,7 +1606,7 @@ static void export_program() {
         sprintf(buf, "Can't open \"%s\" for output: %s (%d)", export_file_name, strerror(err), err);
         MessageBox(hMainWnd, buf, "Message", MB_ICONWARNING);
     } else {
-        core_export_programs(sel_prog_count, sel_prog_list, NULL);
+        core_export_programs(sel_prog_count, sel_prog_list);
         if (export_file != NULL) {
             fclose(export_file);
             export_file = NULL;
@@ -1600,7 +1635,7 @@ static void import_program() {
         sprintf(buf, "Could not open \"%s\" for reading: %s (%d)", buf, strerror(err), err);
         MessageBox(hMainWnd, buf, "Message", MB_ICONWARNING);
     } else {
-        core_import_programs(NULL);
+        core_import_programs();
         redisplay();
         if (import_file != NULL) {
             fclose(import_file);
@@ -1764,6 +1799,17 @@ void shell_beeper(int frequency, int duration) {
     Beep(frequency, duration);
 }
 
+static VOID CALLBACK ann_print_timeout(HWND hwnd, UINT uMsg, UINT idEvent, DWORD dwTime) {
+    KillTimer(NULL, ann_print_timer);
+    ann_print_timer = 0;
+    ann_print = 0;
+    HDC hdc = GetDC(hMainWnd);
+    HDC memdc = CreateCompatibleDC(hdc);
+    skin_repaint_annunciator(hdc, memdc, 3, ann_print);
+    DeleteDC(memdc);
+    ReleaseDC(hMainWnd, hdc);
+}
+
 /* shell_annunciators()
  * Callback invoked by the emulator core to change the state of the display
  * annunciators (up/down, shift, print, run, battery, (g)rad).
@@ -1785,9 +1831,18 @@ void shell_annunciators(int updn, int shf, int prt, int run, int g, int rad) {
         ann_shift = shf;
         skin_repaint_annunciator(hdc, memdc, 2, ann_shift);
     }
-    if (prt != -1 && ann_print != prt) {
-        ann_print = prt;
-        skin_repaint_annunciator(hdc, memdc, 3, ann_print);
+    if (prt != -1) {
+        if (ann_print_timer != 0) {
+            KillTimer(NULL, ann_print_timer);
+            ann_print_timer = 0;
+        }
+        if (ann_print != prt)
+            if (prt) {
+                ann_print = 1;
+                skin_repaint_annunciator(hdc, memdc, 3, ann_print);
+            } else {
+                ann_print_timer = SetTimer(NULL, 0, 1000, ann_print_timeout);
+            }
     }
     if (run != -1 && ann_run != run) {
         ann_run = run;
@@ -1884,8 +1939,10 @@ void shell_powerdown() {
     PostQuitMessage(0);
 }
 
-double shell_random_seed() {
-    return ((double) rand()) / (RAND_MAX + 1.0);
+int8 shell_random_seed() {
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+    return ((((int8) ft.dwHighDateTime) << 32) | (uint4) ft.dwLowDateTime) / 10000;
 }
 
 uint4 shell_milliseconds() {
@@ -1984,7 +2041,7 @@ void shell_print(const char *text, int length,
         char buf[1000];
         
         if (print_gif != NULL
-            && gif_lines + height > state.printerGifMaxLength) {
+                && gif_lines + height > state.printerGifMaxLength) {
             shell_finish_gif(gif_seeker, gif_writer);
             fclose(print_gif);
             print_gif = NULL;
@@ -2049,6 +2106,12 @@ void shell_print(const char *text, int length,
 
         shell_spool_gif(bits, bytesperline, x, y, width, height, gif_writer);
         gif_lines += height;
+
+        if (print_gif != NULL && gif_lines + 9 > state.printerGifMaxLength) {
+            shell_finish_gif(gif_seeker, gif_writer);
+            fclose(print_gif);
+            print_gif = NULL;
+        }
         done_print_gif:;
     }
 }

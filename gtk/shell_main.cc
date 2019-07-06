@@ -1,6 +1,6 @@
 ///////////////////////////////////////////////////////////////////////////////
 // Free42 -- an HP-42S calculator simulator
-// Copyright (C) 2004-2016  Thomas Okken
+// Copyright (C) 2004-2019  Thomas Okken
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License, version 2,
@@ -30,6 +30,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <dirent.h>
 #include <unistd.h>
 
 #include "shell.h"
@@ -38,7 +39,8 @@
 #include "shell_spool.h"
 #include "core_main.h"
 #include "core_display.h"
-#include "icon.xpm"
+#include "icon-128x128.xpm"
+#include "icon-48x48.xpm"
 
 #ifndef _POSIX_HOST_NAME_MAX
 #define _POSIX_HOST_NAME_MAX 255
@@ -99,7 +101,8 @@ static GtkAdjustment *print_adj;
 static char export_file_name[FILENAMELEN];
 static FILE *export_file = NULL;
 static FILE *import_file = NULL;
-static GdkPixbuf *icon;
+static GdkPixbuf *icon_128;
+static GdkPixbuf *icon_48;
 
 static int ckey = 0;
 static int skey;
@@ -125,6 +128,7 @@ static int ann_run = 0;
 static int ann_battery = 0;
 static int ann_g = 0;
 static int ann_rad = 0;
+static guint ann_print_timeout_id = 0;
 
 
 /* Private functions */
@@ -228,8 +232,18 @@ static gint num_entries_compactmenu = sizeof(entries_compactmenu) / sizeof(entri
 
 static int use_compactmenu = 0;
 
+static bool decimal_point;
+
 int main(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
+
+    // Capture state of decimal_point, which may have been changed by
+    // gtk_init(), and then set it to the C locale, because the binary/decimal
+    // conversions expect a decimal point, not a comma.
+    struct lconv *loc = localeconv();
+    decimal_point = strcmp(loc->decimal_point, ",") != 0;
+    setlocale(LC_NUMERIC, "C");
+
     char *skin_arg = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-skin") == 0)
@@ -385,10 +399,11 @@ int main(int argc, char *argv[]) {
     /***** Build the main window *****/
     /*********************************/
 
-    icon = gdk_pixbuf_new_from_xpm_data((const char **) icon_xpm);
+    icon_128 = gdk_pixbuf_new_from_xpm_data((const char **) icon_128_xpm);
+    icon_48 = gdk_pixbuf_new_from_xpm_data((const char **) icon_48_xpm);
 
     mainwindow = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_icon(GTK_WINDOW(mainwindow), icon);
+    gtk_window_set_icon(GTK_WINDOW(mainwindow), icon_128);
     gtk_window_set_title(GTK_WINDOW(mainwindow), TITLE);
     gtk_window_set_role(GTK_WINDOW(mainwindow), "Free42 Calculator");
     gtk_window_set_resizable(GTK_WINDOW(mainwindow), FALSE);
@@ -496,7 +511,7 @@ int main(int argc, char *argv[]) {
         print_bitmap[n] = 0;
 
     printwindow = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_icon(GTK_WINDOW(printwindow), icon);
+    gtk_window_set_icon(GTK_WINDOW(printwindow), icon_128);
     gtk_window_set_title(GTK_WINDOW(printwindow), "Free42 Print-Out");
     gtk_window_set_role(GTK_WINDOW(printwindow), "Free42 Print-Out");
     g_signal_connect(G_OBJECT(printwindow), "delete_event",
@@ -563,6 +578,14 @@ int main(int argc, char *argv[]) {
         fclose(apm);
         shell_low_battery();
         g_timeout_add(60000, battery_checker, NULL);
+    } else {
+        /* Check if /sys/class/power_supply exists */
+        DIR *d = opendir("/sys/class/power_supply");
+        if (d != NULL) {
+            closedir(d);
+            shell_low_battery();
+            g_timeout_add(60000, battery_checker, NULL);
+        }
     }
 
     if (pipe(pype) != 0)
@@ -1027,16 +1050,19 @@ static void exportProgramCB() {
         gtk_widget_show_all(GTK_WIDGET(sel_dialog));
     }
 
-    char buf[10000];
-    int count = core_list_programs(buf, 10000);
-    char *p = buf;
+    char *buf = core_list_programs();
 
     GtkListStore *model = gtk_list_store_new(1, G_TYPE_STRING);
-    GtkTreeIter iter;
-    while (count-- > 0) {
-        gtk_list_store_append(model, &iter);
-        gtk_list_store_set(model, &iter, 0, p, -1);
-        p += strlen(p) + 1;
+    if (buf != NULL) {
+        int count = ((buf[0] & 255) << 24) | ((buf[1] & 255) << 16) | ((buf[2] & 255) << 8) | (buf[3] & 255);
+        char *p = buf + 4;
+        GtkTreeIter iter;
+        while (count-- > 0) {
+            gtk_list_store_append(model, &iter);
+            gtk_list_store_set(model, &iter, 0, p, -1);
+            p += strlen(p) + 1;
+        }
+        free(buf);
     }
     gtk_tree_view_set_model(tree, GTK_TREE_MODEL(model));
 
@@ -1049,7 +1075,7 @@ static void exportProgramCB() {
     if (cancelled)
         return;
 
-    count = gtk_tree_selection_count_selected_rows(select);
+    int count = gtk_tree_selection_count_selected_rows(select);
     if (count == 0)
         return;
 
@@ -1111,7 +1137,7 @@ static void exportProgramCB() {
             i++;
         }
         g_list_free(rows);
-        core_export_programs(count, p2, NULL);
+        core_export_programs(count, p2);
         free(p2);
         if (export_file != NULL) {
             fclose(export_file);
@@ -1193,7 +1219,7 @@ static void importProgramCB() {
                     filenamebuf, strerror(err), err);
         show_message("Message", buf);
     } else {
-        core_import_programs(NULL);
+        core_import_programs();
         redisplay();
         if (import_file != NULL) {
             fclose(import_file);
@@ -1261,7 +1287,6 @@ static void preferencesCB() {
     static GtkWidget *singleinstance;
     static GtkWidget *printtotext;
     static GtkWidget *textpath;
-    static GtkWidget *rawtext;
     static GtkWidget *printtogif;
     static GtkWidget *gifpath;
     static GtkWidget *gifheight;
@@ -1294,18 +1319,16 @@ static void preferencesCB() {
         gtk_table_attach(GTK_TABLE(table), textpath, 1, 3, 4, 5, (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
         GtkWidget *browse1 = gtk_button_new_with_label("Browse...");
         gtk_table_attach(GTK_TABLE(table), browse1, 3, 4, 4, 5, (GtkAttachOptions) (GTK_SHRINK | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
-        rawtext = gtk_check_button_new_with_label("Raw text");
-        gtk_table_attach(GTK_TABLE(table), rawtext, 1, 3, 5, 6, (GtkAttachOptions) (GTK_SHRINK | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
         printtogif = gtk_check_button_new_with_label("Print to GIF file:");
-        gtk_table_attach(GTK_TABLE(table), printtogif, 0, 1, 6, 7, (GtkAttachOptions) (GTK_SHRINK | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
+        gtk_table_attach(GTK_TABLE(table), printtogif, 0, 1, 5, 6, (GtkAttachOptions) (GTK_SHRINK | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
         gifpath = gtk_entry_new();
-        gtk_table_attach(GTK_TABLE(table), gifpath, 1, 3, 6, 7, (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
+        gtk_table_attach(GTK_TABLE(table), gifpath, 1, 3, 5, 6, (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
         GtkWidget *browse2 = gtk_button_new_with_label("Browse...");
-        gtk_table_attach(GTK_TABLE(table), browse2, 3, 4, 6, 7, (GtkAttachOptions) (GTK_SHRINK | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
+        gtk_table_attach(GTK_TABLE(table), browse2, 3, 4, 5, 6, (GtkAttachOptions) (GTK_SHRINK | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
         GtkWidget *label = gtk_label_new("Maximum GIF height (pixels):");
-        gtk_table_attach(GTK_TABLE(table), label, 1, 2, 7, 8, (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
+        gtk_table_attach(GTK_TABLE(table), label, 1, 2, 6, 7, (GtkAttachOptions) (GTK_EXPAND | GTK_FILL), (GtkAttachOptions) 0, 3, 3);
         gifheight = gtk_entry_new_with_max_length(5);
-        gtk_table_attach(GTK_TABLE(table), gifheight, 2, 3, 7, 8, (GtkAttachOptions) (GTK_SHRINK), (GtkAttachOptions) 0, 3, 3);
+        gtk_table_attach(GTK_TABLE(table), gifheight, 2, 3, 6, 7, (GtkAttachOptions) (GTK_SHRINK), (GtkAttachOptions) 0, 3, 3);
 
         g_signal_connect(G_OBJECT(browse1), "clicked", G_CALLBACK(browse_file),
                 (gpointer) new browse_file_info("Select Text File Name",
@@ -1325,7 +1348,6 @@ static void preferencesCB() {
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(singleinstance), state.singleInstance);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(printtotext), state.printerToTxtFile);
     gtk_entry_set_text(GTK_ENTRY(textpath), state.printerTxtFileName);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(rawtext), core_settings.raw_text);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(printtogif), state.printerToGifFile);
     gtk_entry_set_text(GTK_ENTRY(gifpath), state.printerGifFileName);
     char maxlen[6];
@@ -1338,7 +1360,6 @@ static void preferencesCB() {
         core_settings.matrix_outofrange = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(matrixoutofrange));
         core_settings.auto_repeat = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(autorepeat));
         state.singleInstance = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(singleinstance));
-        core_settings.raw_text = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(rawtext));
 
         state.printerToTxtFile = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(printtotext));
         char *old = strclone(state.printerTxtFileName);
@@ -1362,13 +1383,14 @@ static void preferencesCB() {
             shell_finish_gif(gif_seeker, gif_writer);
             fclose(print_gif);
             print_gif = NULL;
+            gif_seq = -1;
         }
         free(old);
 
         s = gtk_entry_get_text(GTK_ENTRY(gifheight));
         if (sscanf(s, "%d", &state.printerGifMaxLength) == 1) {
-            if (state.printerGifMaxLength < 32)
-                state.printerGifMaxLength = 32;
+            if (state.printerGifMaxLength < 16)
+                state.printerGifMaxLength = 16;
             else if (state.printerGifMaxLength > 32767) state.printerGifMaxLength = 32767;
         } else
             state.printerGifMaxLength = 256;
@@ -1387,27 +1409,24 @@ static void appendSuffix(char *path, char *suffix) {
 }
 
 static void copyCB() {
-    char buf[100];
-    core_copy(buf, 100);
+    char *buf = core_copy();
     GtkClipboard *clip = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
     gtk_clipboard_set_text(clip, buf, -1);
     clip = gtk_clipboard_get(GDK_SELECTION_PRIMARY);
     gtk_clipboard_set_text(clip, buf, -1);
+    free(buf);
 }
 
 static void paste2(GtkClipboard *clip, const gchar *text, gpointer cd) {
     if (text != NULL) {
         core_paste(text);
         redisplay();
+        // GTK will free the text once the callback returns.
     }
 }
 
 static void pasteCB() {
-#ifdef GDK_WINDOWING_X11
-    GtkClipboard *clip = gtk_clipboard_get(GDK_SELECTION_PRIMARY);
-#else
     GtkClipboard *clip = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
-#endif
     gtk_clipboard_request_text(clip, paste2, NULL);
 }
 
@@ -1450,20 +1469,20 @@ static void aboutCB() {
         GtkWidget *container = gtk_bin_get_child(GTK_BIN(about));
         GtkWidget *box = gtk_hbox_new(FALSE, 0);
         gtk_container_add(GTK_CONTAINER(container), box);
-        GtkWidget *image = gtk_image_new_from_pixbuf(icon);
+        GtkWidget *image = gtk_image_new_from_pixbuf(icon_48);
         gtk_box_pack_start(GTK_BOX(box), image, FALSE, FALSE, 10);
         GtkWidget *box2 = gtk_vbox_new(FALSE, 0);
         GtkWidget *version = gtk_label_new("Free42 " VERSION);
         gtk_misc_set_alignment(GTK_MISC(version), 0, 0);
         gtk_box_pack_start(GTK_BOX(box2), version, FALSE, FALSE, 10);
-        GtkWidget *author = gtk_label_new("(C) 2004-2016 Thomas Okken");
+        GtkWidget *author = gtk_label_new("(C) 2004-2019 Thomas Okken");
         gtk_misc_set_alignment(GTK_MISC(author), 0, 0);
         gtk_box_pack_start(GTK_BOX(box2), author, FALSE, FALSE, 0);
         GtkWidget *websitelink = gtk_link_button_new("http://thomasokken.com/free42/");
         GtkWidget *websitebox = gtk_hbox_new(FALSE, 0);
         gtk_box_pack_start(GTK_BOX(websitebox), websitelink, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(box2), websitebox, FALSE, FALSE, 0);
-        GtkWidget *forumlink = gtk_link_button_new("http://groups.google.com/group/free42discuss");
+        GtkWidget *forumlink = gtk_link_button_new("http://thomasokken.com/free42/42s.pdf");
         GtkWidget *forumbox = gtk_hbox_new(FALSE, 0);
         gtk_box_pack_start(GTK_BOX(forumbox), forumlink, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(box2), forumbox, FALSE, FALSE, 0);
@@ -1625,7 +1644,7 @@ static gboolean key_cb(GtkWidget *w, GdkEventKey *event, gpointer cd) {
             }
             bool ctrl = (event->state & GDK_CONTROL_MASK) != 0;
             bool alt = (event->state & GDK_MOD1_MASK) != 0;
-            bool shift = (event->state & (GDK_SHIFT_MASK | GDK_LOCK_MASK)) != 0;
+            bool shift = (event->state & GDK_SHIFT_MASK) != 0;
             bool cshift = ann_shift != 0;
 
             if (ckey != 0) {
@@ -1929,6 +1948,13 @@ void shell_beeper(int frequency, int duration) {
 #endif
 }
 
+static gboolean ann_print_timeout(gpointer cd) {
+    ann_print_timeout_id = 0;
+    ann_print = 0;
+    skin_repaint_annunciator(3, ann_print);
+    return FALSE;
+}
+
 void shell_annunciators(int updn, int shf, int prt, int run, int g, int rad) {
     if (updn != -1 && ann_updown != updn) {
         ann_updown = updn;
@@ -1938,9 +1964,18 @@ void shell_annunciators(int updn, int shf, int prt, int run, int g, int rad) {
         ann_shift = shf;
         skin_repaint_annunciator(2, ann_shift);
     }
-    if (prt != -1 && ann_print != prt) {
-        ann_print = prt;
-        skin_repaint_annunciator(3, ann_print);
+    if (prt != -1) {
+        if (ann_print_timeout_id != 0) {
+            g_source_remove(ann_print_timeout_id);
+            ann_print_timeout_id = 0;
+        }
+        if (ann_print != prt)
+            if (prt) {
+                ann_print = 1;
+                skin_repaint_annunciator(3, ann_print);
+            } else {
+                ann_print_timeout_id = g_timeout_add(1000, ann_print_timeout, NULL);
+            }
     }
     if (run != -1 && ann_run != run) {
         ann_run = run;
@@ -2020,28 +2055,65 @@ uint4 shell_get_mem() {
 
 int shell_low_battery() {
          
-    /* /proc/apm partial legend:
-     * 
-     * 1.16 1.2 0x03 0x01 0x03 0x09 9% -1 ?
-     *               ^^^^ ^^^^
-     *                 |    +-- Battery status (0 = full, 1 = low,
-     *                 |                        2 = critical, 3 = charging)
-     *                 +------- AC status (0 = offline, 1 = online)
-     */
-
-    FILE *apm = fopen("/proc/apm", "r");
-    char line[1024];
     int lowbat = 0;
-    int ac_stat, bat_stat;
-    if (apm == NULL)
-        goto done2;
-    if (fgets(line, 1024, apm) == NULL)
-        goto done1;
-    if (sscanf(line, "%*s %*s %*s %x %x", &ac_stat, &bat_stat) == 2)
-        lowbat = ac_stat != 1 && (bat_stat == 1 || bat_stat == 2);
-    done1:
-    fclose(apm);
-    done2:
+    FILE *apm = fopen("/proc/apm", "r");
+    if (apm != NULL) {
+        /* /proc/apm partial legend:
+         * 
+         * 1.16 1.2 0x03 0x01 0x03 0x09 9% -1 ?
+         *               ^^^^ ^^^^
+         *                 |    +-- Battery status (0 = full, 1 = low,
+         *                 |                        2 = critical, 3 = charging)
+         *                 +------- AC status (0 = offline, 1 = online)
+         */
+        char line[1024];
+        int ac_stat, bat_stat;
+        if (fgets(line, 1024, apm) == NULL)
+            goto done1;
+        if (sscanf(line, "%*s %*s %*s %x %x", &ac_stat, &bat_stat) == 2)
+            lowbat = ac_stat != 1 && (bat_stat == 1 || bat_stat == 2);
+        done1:
+        fclose(apm);
+    } else {
+        /* Battery considered low if
+         *
+         *   /sys/class/power_supply/BATn/status == "Discharging"
+         *   and
+         *   /sys/class/power_supply/BATn/capacity <= 10
+         *
+         * Assuming status will always be "Discharging" when the system is
+         * actually running on battery (it could also be "Full", but then it is
+         * definitely now low!), and that capacity is a number between 0 and
+         * 100. The choice of 10% or less as being "low" is completely
+         * arbitrary.
+         * Checking BATn where n = 0, 1, or 2. Some docs suggest BAT0 should
+         * exist, others suggest 1 should exist; I'm playing safe and trying
+         * both, and throwing in BAT2 just for the fun of it.
+         */
+        char status_filename[50];
+        char capacity_filename[50];
+        char line[50];
+        for (int n = 0; n <= 2; n++) {
+            sprintf(status_filename, "/sys/class/power_supply/BAT%d/status", n);
+            FILE *status_file = fopen(status_filename, "r");
+            if (status_file == NULL)
+                continue;
+            sprintf(capacity_filename, "/sys/class/power_supply/BAT%d/capacity", n);
+            FILE *capacity_file = fopen(capacity_filename, "r");
+            if (capacity_file == NULL) {
+                fclose(status_file);
+                continue;
+            }
+            bool discharging = fgets(line, 50, status_file) != NULL && strncasecmp(line, "discharging", 11) == 0;
+            int capacity;
+            if (fscanf(capacity_file, "%d", &capacity) != 1)
+                capacity = 100;
+            fclose(status_file);
+            fclose(capacity_file);
+            lowbat = discharging && capacity <= 10;
+            break;
+        }
+    }
     if (lowbat != ann_battery) {
         ann_battery = lowbat;
         if (allow_paint)
@@ -2059,10 +2131,10 @@ void shell_powerdown() {
     quit_flag = true;
 }
 
-double shell_random_seed() {
+int8 shell_random_seed() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    return ((tv.tv_sec * 1000000L + tv.tv_usec) & 0xffffffffL) / 4294967296.0;
+    return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
 uint4 shell_milliseconds() {
@@ -2072,8 +2144,7 @@ uint4 shell_milliseconds() {
 }
 
 int shell_decimal_point() {
-    struct lconv *loc = localeconv();
-    return strcmp(loc->decimal_point, ",") == 0 ? 0 : 1;
+    return decimal_point ? 1 : 0;
 }
 
 struct print_growth_info {
@@ -2232,6 +2303,12 @@ void shell_print(const char *text, int length,
 
         shell_spool_gif(bits, bytesperline, x, y, width, height, gif_writer);
         gif_lines += height;
+
+        if (print_gif != NULL && gif_lines + 9 > state.printerGifMaxLength) {
+            shell_finish_gif(gif_seeker, gif_writer);
+            fclose(print_gif);
+            print_gif = NULL;
+        }
         done_print_gif:;
     }
 }

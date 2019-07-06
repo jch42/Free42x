@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -239,15 +239,25 @@ void string_copy(char *dst, int *dstlen, const char *src, int srclen) {
         dst[i] = src[i];
 }
 
-int string_equals(const char *s1, int s1len, const char *s2, int s2len) {
+bool string_equals(const char *s1, int s1len, const char *s2, int s2len) {
     int i;
     if (s1len != s2len)
-        return 0;
+        return false;
     for (i = 0; i < s1len; i++)
         if (s1[i] != s2[i])
-            return 0;
-    return 1;
+            return false;
+    return true;
 }
+
+#if (!defined(ANDROID) && !defined(IPHONE))
+static bool always_on = false;
+int shell_always_on(int ao) {
+    int ret = always_on ? 1 : 0;
+    if (ao != -1)
+        always_on = ao == 1;
+    return ret;
+}
+#endif
 
 int virtual_flag_handler(int flagop, int flagnum) {
     /* NOTE: the determination which flag numbers are handled by this
@@ -284,6 +294,16 @@ int virtual_flag_handler(int flagop, int flagnum) {
                     return ERR_INTERNAL_ERROR;
             }
         }
+        case 44: /* continuous on */ {
+            switch (flagop) {
+                case FLAGOP_FS_T:
+                    return shell_always_on(-1) ? ERR_YES : ERR_NO;
+                case FLAGOP_FC_T:
+                    return shell_always_on(-1) ? ERR_NO : ERR_YES;
+                default:
+                    return ERR_INTERNAL_ERROR;
+            }
+        }
         case 45: /* solving */ {
             switch (flagop) {
                 case FLAGOP_FS_T:
@@ -311,6 +331,17 @@ int virtual_flag_handler(int flagop, int flagnum) {
                     return its_on ? ERR_YES : ERR_NO;
                 case FLAGOP_FC_T:
                     return its_on ? ERR_NO : ERR_YES;
+                default:
+                    return ERR_INTERNAL_ERROR;
+            }
+        }
+        case 48: /* alpha_mode */ {
+            bool alpha = core_alpha_menu();
+            switch (flagop) {
+                case FLAGOP_FS_T:
+                    return alpha ? ERR_YES : ERR_NO;
+                case FLAGOP_FC_T:
+                    return alpha ? ERR_NO : ERR_YES;
                 default:
                     return ERR_INTERNAL_ERROR;
             }
@@ -348,7 +379,7 @@ int virtual_flag_handler(int flagop, int flagnum) {
             }
         }
         case 75: /* programmable_menu */ {
-            int its_on = mode_plainmenu = MENU_PROGRAMMABLE;
+            int its_on = mode_plainmenu == MENU_PROGRAMMABLE;
             switch (flagop) {
                 case FLAGOP_FS_T:
                     return its_on ? ERR_YES : ERR_NO;
@@ -719,7 +750,7 @@ static phloat sin_or_cos_deg(phloat x, bool do_sin) {
     }
     phloat r;
     if (x == 45)
-        r = sqrt(0.5);
+        r = sqrt(phloat(0.5));
     else {
         if (x > 45) {
             x = 90 - x;
@@ -759,7 +790,7 @@ static phloat sin_or_cos_grad(phloat x, bool do_sin) {
     }
     phloat r;
     if (x == 50)
-        r = sqrt(0.5);
+        r = sqrt(phloat(0.5));
     else {
         if (x > 50) {
             x = 100 - x;
@@ -779,7 +810,16 @@ phloat cos_grad(phloat x) {
     return sin_or_cos_grad(x, false);
 }
 
-int dimension_array(const char *name, int namelen, int4 rows, int4 columns) {
+int dimension_array(const char *name, int namelen, int4 rows, int4 columns, bool check_matedit) {
+    if (check_matedit
+            && (matedit_mode == 1 || matedit_mode == 3)
+            && string_equals(name, namelen, matedit_name, matedit_length)) {
+        if (matedit_mode == 1)
+            matedit_i = matedit_j = 0;
+        else
+            return ERR_RESTRICTED_OPERATION;
+    }
+
     vartype *matrix = recall_var(name, namelen);
     /* NOTE: 'size' will only ever be 0 when we're called from
      * docmd_size(); docmd_dim() does not allow 0-size matrices.
@@ -1015,7 +1055,7 @@ int int2string(int4 n, char *buf, int buflen) {
     return count + uint2string(u, buf + count, buflen - count);
 }
 
-int vartype2string(const vartype *v, char *buf, int buflen) {
+int vartype2string(const vartype *v, char *buf, int buflen, int max_mant_digits) {
     int dispmode;
     int digits = 0;
 
@@ -1037,7 +1077,8 @@ int vartype2string(const vartype *v, char *buf, int buflen) {
         case TYPE_REAL:
             return phloat2string(((vartype_real *) v)->x, buf, buflen,
                                  1, digits, dispmode,
-                                 flags.f.thousands_separators);
+                                 flags.f.thousands_separators,
+                                 max_mant_digits);
 
         case TYPE_COMPLEX: {
             phloat x, y;
@@ -1059,19 +1100,23 @@ int vartype2string(const vartype *v, char *buf, int buflen) {
 
             x_len = phloat2string(x, x_buf, 22,
                                   0, digits, dispmode,
-                                  flags.f.thousands_separators);
+                                  flags.f.thousands_separators,
+                                  max_mant_digits);
             y_len = phloat2string(y, y_buf, 22,
                                   0, digits, dispmode,
-                                  flags.f.thousands_separators);
+                                  flags.f.thousands_separators,
+                                  max_mant_digits);
 
             if (x_len + y_len + 2 > buflen) {
                 /* Too long? Fall back on ENG 2 */
                 x_len = phloat2string(x, x_buf, 22,
                                       0, 2, 2,
-                                      flags.f.thousands_separators);
+                                      flags.f.thousands_separators,
+                                      max_mant_digits);
                 y_len = phloat2string(y, y_buf, 22,
                                       0, 2, 2,
-                                      flags.f.thousands_separators);
+                                      flags.f.thousands_separators,
+                                      max_mant_digits);
             }
 
             for (i = 0; i < buflen; i++) {
@@ -1156,15 +1201,15 @@ char *phloat2program(phloat d) {
     /* Converts a phloat to its most compact representation;
      * used for generating HP-42S style number literals in programs.
      */
-    static char allbuf[25];
-    static char scibuf[25];
+    static char allbuf[50];
+    static char scibuf[50];
     int alllen;
     int scilen;
     char dot = flags.f.decimal_point ? '.' : ',';
     int decimal, zeroes, last_nonzero, exponent;
     int i;
-    alllen = phloat2string(d, allbuf, 24, 0, 0, 3, 0);
-    scilen = phloat2string(d, scibuf, 24, 0, 11, 1, 0);
+    alllen = phloat2string(d, allbuf, 49, 0, 0, 3, 0, MAX_MANT_DIGITS);
+    scilen = phloat2string(d, scibuf, 49, 0, MAX_MANT_DIGITS - 1, 1, 0, MAX_MANT_DIGITS);
     /* Shorten SCI representation by removing trailing zeroes,
      * and decreasing the exponent until the decimal point
      * shifts out of the mantissa.
@@ -1231,7 +1276,7 @@ char *phloat2program(phloat d) {
                 if (neg)
                     ex = -ex;
                 scilen += int2string(ex, scibuf + exponent,
-                                        50 - exponent);
+                                        49 - exponent);
             }
         }
     }

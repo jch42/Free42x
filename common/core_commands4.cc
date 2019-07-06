@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -23,6 +23,7 @@
 #include "core_display.h"
 #include "core_helpers.h"
 #include "core_linalg1.h"
+#include "core_math2.h"
 #include "core_sto_rcl.h"
 #include "core_variables.h"
 
@@ -117,6 +118,14 @@ int docmd_insr(arg_struct *arg) {
                 cm->array->data[i] = 0;
         }
     } else {
+        /* Make sure the new array is less than 2 GB,
+         * so it's addressable with a signed 32-bit index */
+        double d_bytes = ((double) (rows + 1)) * ((double) columns) * sizeof(phloat);
+        if (m->type == TYPE_COMPLEXMATRIX)
+            d_bytes *= 2;
+        if (((double) (int4) d_bytes) != d_bytes)
+            return ERR_INSUFFICIENT_MEMORY;
+
         /* We're sharing this array. I don't use disentangle() because it
          * does not deal with resizing. */
         int4 newsize = (rows + 1) * columns;
@@ -226,7 +235,7 @@ int docmd_j_add(arg_struct *arg) {
                     err = dimension_array_ref(matedit_x, rows + 1, columns);
                 else
                     err = dimension_array(matedit_name, matedit_length,
-                                            rows + 1, columns);
+                                            rows + 1, columns, false);
                 if (err != ERR_NONE) {
                     matedit_i = oldi;
                     matedit_j = oldj;
@@ -309,7 +318,7 @@ int docmd_posa(arg_struct *arg) {
         vartype_string *s = (vartype_string *) reg_x;
         if (s->length != 0) {
             int i, j;
-            for (i = 0; i < reg_alpha_length - s->length; i++) {
+            for (i = 0; i < reg_alpha_length - s->length + 1; i++) {
                 for (j = 0; j < s->length; j++)
                     if (reg_alpha[i + j] != s->text[j])
                         goto notfound;
@@ -715,6 +724,15 @@ static int mappable_sinh_r(phloat x, phloat *y) {
 }   
 
 static int mappable_sinh_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
+    if (xim == 0) {
+        *yre = sinh(xre);
+        *yim = 0;
+        return ERR_NONE;
+    } else if (xre == 0) {
+        *yre = 0;
+        *yim = sin(xim);
+        return ERR_NONE;
+    }
     phloat sinhxre, coshxre;
     phloat sinxim, cosxim;
     int inf;
@@ -806,7 +824,9 @@ int docmd_stoel(arg_struct *arg) {
             cm->array->data[2 * n] = c->re;
             cm->array->data[2 * n + 1] = c->im;
             return ERR_NONE;
-        } else
+        } else if (reg_x->type == TYPE_STRING)
+            return ERR_ALPHA_DATA_IS_INVALID;
+        else
             return ERR_INVALID_TYPE;
     }
 }
@@ -880,39 +900,49 @@ static int mappable_tanh_r(phloat x, phloat *y) {
 }   
 
 static int mappable_tanh_c(phloat xre, phloat xim, phloat *yre, phloat *yim) {
-    phloat sinhxre, coshxre;
-    phloat sinxim, cosxim;
-    phloat re_sinh, re_cosh, im_sinh, im_cosh, abs_cosh;
-    int inf;
+    if (xim == 0) {
+        *yre = tanh(xre);
+        *yim = 0;
+        return ERR_NONE;
+    } else if (xre == 0) {
+        *yre = 0;
+        return math_tan(xim, yim, true);
+    }
 
-    sinhxre = sinh(xre);
-    coshxre = cosh(xre);
-    sincos(xim, &sinxim, &cosxim);
-
-    re_sinh = sinhxre * cosxim;
-    im_sinh = coshxre * sinxim;
-    re_cosh = coshxre * cosxim;
-    im_cosh = sinhxre * sinxim;
-    abs_cosh = hypot(re_cosh, im_cosh);
-
-    if (abs_cosh == 0) {
+    phloat xim2 = xim * 2;
+    if (p_isnan(xre) || p_isnan(xim) || p_isinf(xim2)) {
+        *yre = NAN_PHLOAT;
+        *yim = NAN_PHLOAT;
+        return ERR_NONE;
+    }
+    phloat xre2 = xre * 2;
+    phloat sinhxre2 = sinh(xre2);
+    phloat coshxre2 = cosh(xre2);
+    phloat sinxim2, cosxim2;
+    sincos(xim2, &sinxim2, &cosxim2);
+    phloat d = coshxre2 + cosxim2;
+    if (d == 0) {
         if (flags.f.range_error_ignore) {
-            *yre = re_sinh * im_sinh + re_cosh * im_cosh > 0 ? POS_HUGE_PHLOAT
-                                                             : NEG_HUGE_PHLOAT;
-            *yim = im_sinh * re_cosh - re_sinh * im_cosh > 0 ? POS_HUGE_PHLOAT
-                                                             : NEG_HUGE_PHLOAT;
+            *yre = POS_HUGE_PHLOAT;
+            *yim = POS_HUGE_PHLOAT;
+            return ERR_NONE;
         } else
             return ERR_OUT_OF_RANGE;
     }
-
-    *yre = (re_sinh * re_cosh + im_sinh * im_cosh) / abs_cosh / abs_cosh;
+    if (p_isinf(d) != 0) {
+        *yre = xre < 0 ? -1 : 1;
+        *yim = 0;
+        return ERR_NONE;
+    }
+    *yre = sinhxre2 / d;
+    *yim = sinxim2 / d;
+    int inf;
     if ((inf = p_isinf(*yre)) != 0) {
         if (flags.f.range_error_ignore)
             *yre = inf < 0 ? NEG_HUGE_PHLOAT : POS_HUGE_PHLOAT;
         else
             return ERR_OUT_OF_RANGE;
     }
-    *yim = (im_sinh * re_cosh - re_sinh * im_cosh) / abs_cosh / abs_cosh;
     if ((inf = p_isinf(*yim)) != 0) {
         if (flags.f.range_error_ignore)
             *yim = inf < 0 ? NEG_HUGE_PHLOAT : POS_HUGE_PHLOAT;
@@ -1068,7 +1098,7 @@ static int matedit_move(int direction) {
                                                       rows + 1, columns);
                         else
                             err = dimension_array(matedit_name, matedit_length,
-                                                  rows + 1, columns);
+                                                  rows + 1, columns, false);
                         if (err != ERR_NONE)
                             return err;
                         new_i = rows++;
@@ -1142,7 +1172,8 @@ static int matedit_move(int direction) {
             cm->array->data[2 * old_n + 1] = c->im;
         } else {
             free_vartype(v);
-            return ERR_INVALID_TYPE;
+            return reg_x->type == TYPE_STRING ? ERR_ALPHA_DATA_IS_INVALID
+                                              : ERR_INVALID_TYPE;
         }
     }
 
@@ -1242,6 +1273,7 @@ static void matx_completion(int error, vartype *res) {
     matedit_name[3] = 'X';
     matedit_i = 0;
     matedit_j = 0;
+    mode_disable_stack_lift = flags.f.stack_lift_disable;
 }
 
 static int matabx(int which) {
@@ -1250,27 +1282,36 @@ static int matabx(int which) {
     switch (which) {
         case 0:
             mat = recall_var("MATA", 4);
-            break;
+            goto mat_a_or_b_check;
 
         case 1:
             mat = recall_var("MATB", 4);
+            mat_a_or_b_check:
+            if (mat == NULL)
+                return ERR_NONEXISTENT;
+            if (mat->type == TYPE_STRING)
+                return ERR_ALPHA_DATA_IS_INVALID;
+            if (mat->type != TYPE_REALMATRIX && mat->type != TYPE_COMPLEXMATRIX)
+                return ERR_INVALID_TYPE;
             break;
 
         case 2: {
             vartype *mata, *matb;
 
-            mata = recall_var("MATA", 4);
-            if (mata == NULL)
-                return ERR_NONEXISTENT;
-            if (mata->type != TYPE_REALMATRIX
-                    && mata->type != TYPE_COMPLEXMATRIX)
-                return ERR_INVALID_TYPE;
-
             matb = recall_var("MATB", 4);
             if (matb == NULL)
                 return ERR_NONEXISTENT;
-            if (matb->type != TYPE_REALMATRIX
-                    && matb->type != TYPE_COMPLEXMATRIX)
+            if (matb->type == TYPE_STRING)
+                return ERR_ALPHA_DATA_IS_INVALID;
+            if (matb->type != TYPE_REALMATRIX && matb->type != TYPE_COMPLEXMATRIX)
+                return ERR_INVALID_TYPE;
+
+            mata = recall_var("MATA", 4);
+            if (mata == NULL)
+                return ERR_NONEXISTENT;
+            if (mata->type == TYPE_STRING)
+                return ERR_ALPHA_DATA_IS_INVALID;
+            if (mata->type != TYPE_REALMATRIX && mata->type != TYPE_COMPLEXMATRIX)
                 return ERR_INVALID_TYPE;
 
             if (mata->type == TYPE_REALMATRIX && matb->type == TYPE_REALMATRIX)
@@ -1314,6 +1355,7 @@ static int matabx(int which) {
     matedit_name[3] = which == 0 ? 'A' : 'B';
     matedit_i = 0;
     matedit_j = 0;
+    mode_disable_stack_lift = flags.f.stack_lift_disable;
     return ERR_NONE;
 }
 
@@ -1405,6 +1447,19 @@ int docmd_simq(arg_struct *arg) {
         abort_and_free_a:
         free_vartype(mata);
         return err;
+    }
+
+    if (matedit_mode == 1 || matedit_mode == 3) {
+        // Note: matedit_mode cannot be EDITN at this point,
+        // because SIMQ is a non-programmable, non-assignable command
+        // that isn't reachable while the matrix editor is active.
+        // Still, we're following the 'better safe than sorry' dictum,
+        // as per the previous comment.
+        if (string_equals(matedit_name, matedit_length, "MATA", 4)
+                || string_equals(matedit_name, matedit_length, "MATB", 4)
+                || string_equals(matedit_name, matedit_length, "MATX", 4)) {
+            matedit_i = matedit_j = 0;
+        }
     }
 
     store_var("MATX", 4, matx);

@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -226,7 +226,9 @@ void keydown(int shift, int key) {
             deferred_print = 1;
     }
 
-    if (mode_command_entry && shift && (key == KEY_UP || key == KEY_DOWN)) {
+    if (mode_command_entry
+            && (shift || get_front_menu() == NULL)
+            && (key == KEY_UP || key == KEY_DOWN)) {
         /* Trying to do SST or BST while in command entry mode */
         squeak();
         return;
@@ -275,7 +277,7 @@ void keydown(int shift, int key) {
         keydown_number_entry(shift, key);
     else if (mode_command_entry)
         keydown_command_entry(shift, key);
-    else if (flags.f.alpha_mode)
+    else if (core_alpha_menu())
         keydown_alpha_mode(shift, key);
     else
         keydown_normal_mode(shift, key);
@@ -649,6 +651,19 @@ void keydown_command_entry(int shift, int key) {
             redisplay();
             return;
         }
+    }
+    
+    if (incomplete_command == CMD_LBL && !incomplete_alpha && incomplete_length == 1
+            && shift && key == KEY_ENTER) {
+        /* More LBL weirdness: you can switch to ALPHA mode while entering
+         * a numeric LBL
+         */
+        incomplete_alpha = 1;
+        incomplete_str[0] = '0' + incomplete_num;
+        incomplete_num = 0;
+        mode_commandmenu = MENU_ALPHA1;
+        redisplay();
+        return;
     }
 
     if ((incomplete_command == CMD_ASTO || incomplete_command == CMD_ARCL)
@@ -1642,7 +1657,6 @@ void keydown_alpha_mode(int shift, int key) {
                     docmd_pra(NULL);
                 mode_alpha_entry = false;
             }
-            flags.f.alpha_mode = 0;
             pending_command = CMD_CANCELLED;
         } else
             redisplay();
@@ -1695,10 +1709,8 @@ void keydown_alpha_mode(int shift, int key) {
         if (flags.f.prgm_mode) {
             if (mode_alpha_entry) {
                 finish_alpha_prgm_line();
-                flags.f.alpha_mode = 0;
                 set_menu(MENULEVEL_ALPHA, MENU_NONE);
             } else if (shift) {
-                flags.f.alpha_mode = 0;
                 set_menu(MENULEVEL_ALPHA, MENU_NONE);
             } else {
                 start_alpha_prgm_line();
@@ -1711,7 +1723,6 @@ void keydown_alpha_mode(int shift, int key) {
                         && (flags.f.trace_print || flags.f.normal_print)
                         && flags.f.printer_exists)
                     docmd_pra(NULL);
-                flags.f.alpha_mode = 0;
                 mode_alpha_entry = false;
                 set_menu(MENULEVEL_ALPHA, MENU_NONE);
             } else
@@ -1776,7 +1787,6 @@ void keydown_alpha_mode(int shift, int key) {
 
     if (command == CMD_CANCELLED) {
         /* plainmenu or appmenu switch */
-        flags.f.alpha_mode = 0;
         set_menu(MENULEVEL_ALPHA, MENU_NONE);
         redisplay();
         return;
@@ -1924,16 +1934,16 @@ void keydown_normal_mode(int shift, int key) {
             }
             if (!shift && key == KEY_UP) {
                 if (varmenu_rows > 1) {
-                    if (++varmenu_row >= varmenu_rows)
-                        varmenu_row = 0;
+                    if (--varmenu_row < 0)
+                        varmenu_row = varmenu_rows - 1;
                     pending_command = CMD_CANCELLED;
                 }
                 return;
             }
             if (!shift && key == KEY_DOWN) {
                 if (varmenu_rows > 1) {
-                    if (--varmenu_row < 0)
-                        varmenu_row = varmenu_rows - 1;
+                    if (++varmenu_row >= varmenu_rows)
+                        varmenu_row = 0;
                     pending_command = CMD_CANCELLED;
                 }
                 return;
@@ -1994,11 +2004,12 @@ void keydown_normal_mode(int shift, int key) {
                         else if (lookup_var(name, length) != -1)
                             pending_command = CMD_RCL;
                         else {
-                            int cmd = find_builtin(name, length);
+                            int cmd = find_builtin(name, length, true);
                             if (cmd == -1)
                                 pending_command = CMD_XEQ;
                             else if (cmd == CMD_CLALLa) {
                                 mode_clall = true;
+                                set_menu(MENULEVEL_ALPHA, MENU_NONE);
                                 pending_command = CMD_NONE;
                                 redisplay();
                                 return;
@@ -2311,7 +2322,6 @@ void keydown_normal_mode(int shift, int key) {
     if (shift && key == KEY_ENTER) {
         if (deferred_print)
             print_command(CMD_NULL, NULL);
-        flags.f.alpha_mode = 1;
         mode_alpha_entry = false;
         set_menu(MENULEVEL_ALPHA, MENU_ALPHA1);
         redisplay();

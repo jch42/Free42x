@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -18,7 +18,7 @@
 #import <sys/stat.h>
 #import <unistd.h>
 #import <UIKit/UIKit.h>
-#import "Free42AppDelegate.h"
+#import "Classes/Free42AppDelegate.h"
 
 int main(int argc, char *argv[]) {
     

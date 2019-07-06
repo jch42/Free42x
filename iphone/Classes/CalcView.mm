@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -72,8 +72,6 @@ static void quit2(bool really_quit);
 static void shell_keydown();
 static void shell_keyup();
 
-static int skin_width, skin_height;
-
 static int read_shell_state(int *version);
 static void init_shell_state(int version);
 static int write_shell_state();
@@ -106,6 +104,8 @@ static int ann_run = 0;
 //static int ann_battery = 0;
 static int ann_g = 0;
 static int ann_rad = 0;
+static pthread_mutex_t ann_print_timeout_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool ann_print_timeout_active = false;
 
 static FILE *print_txt = NULL;
 static FILE *print_gif = NULL;
@@ -123,6 +123,61 @@ static bool is_file(const char *name);
 ///////////////////////////////////////////////////////////////////////////////
 /////                    Ende ophphe ye olde C stuphphe                   /////
 ///////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////
+/////   Accelerometer, Location Services, and Compass support    /////
+//////////////////////////////////////////////////////////////////////
+
+static double accel_x = 0, accel_y = 0, accel_z = 0;
+static double loc_lat = 0, loc_lon = 0, loc_lat_lon_acc = -1, loc_elev = 0, loc_elev_acc = -1;
+static double hdg_mag = 0, hdg_true = 0, hdg_acc = -1, hdg_x = 0, hdg_y = 0, hdg_z = 0;
+
+@interface HardwareDelegate : NSObject <UIAccelerometerDelegate, CLLocationManagerDelegate> {}
+- (void)accelerometer:(UIAccelerometer *)accelerometer didAccelerate:(UIAcceleration *)acceleration;
+- (void)locationManager:(CLLocationManager *)manager didUpdateToLocation:(CLLocation *)newLocation fromLocation:(CLLocation *)oldLocation;
+- (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error;
+- (void)locationManager:(CLLocationManager *)manager didUpdateHeading:(CLHeading *)newHeading;
+- (BOOL)locationManagerShouldDisplayHeadingCalibration:(CLLocationManager *)manager;
+@end
+
+@implementation HardwareDelegate
+
+- (void)accelerometer:(UIAccelerometer *)accelerometer didAccelerate:(UIAcceleration *)acceleration {
+    accel_x = acceleration.x;
+    accel_y = acceleration.y;
+    accel_z = acceleration.z;
+    NSLog(@"Acceleration received: %g %g %g", accel_x, accel_y, accel_z);
+}
+
+- (void)locationManager:(CLLocationManager *)manager didUpdateToLocation:(CLLocation *)newLocation fromLocation:(CLLocation *)oldLocation {
+    loc_lat = newLocation.coordinate.latitude;
+    loc_lon = newLocation.coordinate.longitude;
+    loc_lat_lon_acc = newLocation.horizontalAccuracy;
+    loc_elev = newLocation.altitude;
+    loc_elev_acc = newLocation.verticalAccuracy;
+    NSLog(@"Location received: %g %g", loc_lat, loc_lon);
+}
+
+- (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error {
+    NSLog(@"Location error received: %@", [error localizedDescription]);
+}
+
+- (void)locationManager:(CLLocationManager *)manager didUpdateHeading:(CLHeading *)newHeading {
+    hdg_mag = newHeading.magneticHeading;
+    hdg_true = newHeading.trueHeading;
+    hdg_acc = newHeading.headingAccuracy;
+    hdg_x = newHeading.x;
+    hdg_y = newHeading.y;
+    hdg_z = newHeading.z;
+    NSLog(@"Heading received: %g", hdg_mag);
+}
+
+- (BOOL)locationManagerShouldDisplayHeadingCalibration:(CLLocationManager *)manager {
+    return YES;
+}
+
+@end
 
 
 static CalcView *calcView = nil;
@@ -253,11 +308,12 @@ static CalcView *calcView = nil;
 
 - (void) touchesBegan3 {
     TRACE("touchesBegan3");
-    // TODO -- a separate Keyboard Clicks setting in Preferences would be better;
-    // figuring out how to read Settings -> General -> Sounds -> Keyboard Clicks
-    // would be better still!
-    if (flags.f.audio_enable)
+    if (state.keyClicks)
         AudioServicesPlaySystemSound(1105);
+    if (state.hapticFeedback) {
+        UIImpactFeedbackGenerator *fbgen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+        [fbgen impactOccurred];
+    }
     macro = skin_find_macro(ckey);
     shell_keydown();
     mouse_key = 1;
@@ -347,6 +403,25 @@ static CalcView *calcView = nil;
     quit2(true);
 }
 
+- (void) layoutSubviews {
+    long w, h;
+    skin_load(&w, &h);
+    core_repaint_display();
+    [CalcView repaint];
+}
+
++ (BOOL) isPortrait {
+    return calcView.bounds.size.height > calcView.bounds.size.width;
+}
+
++ (CGFloat) width {
+    return calcView.bounds.size.width;
+}
+
++ (CGFloat) height {
+    return calcView.bounds.size.height;
+}
+
 + (void) enterBackground {
     TRACE("enterBackground");
     quit2(false);
@@ -360,20 +435,18 @@ static CalcView *calcView = nil;
 }
 
 - (void) doCopy {
-    char buf[100];
-    core_copy(buf, 100);
-    NSString *txt = [NSString stringWithCString:buf encoding:NSUTF8StringEncoding];
+    char *buf = core_copy();
+    NSString *txt = [NSString stringWithUTF8String:buf];
     UIPasteboard *pb = [UIPasteboard generalPasteboard];
     [pb setString:txt];
+    free(buf);
 }
 
 - (void) doPaste {
     UIPasteboard *pb = [UIPasteboard generalPasteboard];
     NSString *txt = [pb string];
-    char buf[100];
-    [txt getCString:buf maxLength:100 encoding:NSUTF8StringEncoding];
+    const char *buf = [txt UTF8String];
     core_paste(buf);
-    redisplay();
 }
 
 - (void) startRunner {
@@ -383,6 +456,7 @@ static CalcView *calcView = nil;
 
 - (void) awakeFromNib {
     TRACE("awakeFromNib");
+    [super awakeFromNib];
     calcView = self;
     statefile = fopen("config/state", "r");
     int init_mode, version;
@@ -400,8 +474,6 @@ static CalcView *calcView = nil;
 
     long w, h;
     skin_load(&w, &h);
-    skin_width = (int) w;
-    skin_height = (int) h;
     
     core_init(init_mode, version);
     if (statefile != NULL) {
@@ -411,6 +483,8 @@ static CalcView *calcView = nil;
     keep_running = core_powercycle();
     if (keep_running)
         [self startRunner];
+    if (shell_always_on(-1))
+        [UIApplication sharedApplication].idleTimerDisabled = YES;
 }
 
 - (void) runner {
@@ -521,7 +595,74 @@ static int timeout3_delay;
         shell_finish_gif(gif_seeker, gif_writer);
         fclose(print_gif);
         print_gif = NULL;
+        gif_seq = -1;
     }
+}
+
+static HardwareDelegate *hwDel = NULL;
+static CLLocationManager *locMgr = NULL;
+
+- (void) start_accelerometer {
+    UIAccelerometer *am = [UIAccelerometer sharedAccelerometer];
+    am.updateInterval = 1;
+    if (hwDel == NULL)
+        hwDel = [HardwareDelegate alloc];
+    am.delegate = hwDel;
+}
+
+- (void) start_location {
+    if (locMgr == NULL) {
+        locMgr = [[CLLocationManager alloc] init];
+        if (hwDel == NULL)
+            hwDel = [HardwareDelegate alloc];
+        locMgr.delegate = hwDel;
+    }
+    if ([locMgr respondsToSelector:@selector(requestWhenInUseAuthorization)])
+        [locMgr requestWhenInUseAuthorization];
+    locMgr.distanceFilter = kCLDistanceFilterNone;
+    locMgr.desiredAccuracy = kCLLocationAccuracyBest;
+    [locMgr startUpdatingLocation];
+}
+
+- (void) start_heading {
+    if (locMgr == NULL) {
+        locMgr = [[CLLocationManager alloc] init];
+        if (hwDel == NULL)
+            hwDel = [HardwareDelegate alloc];
+        locMgr.delegate = hwDel;
+    }
+    if (![CLLocationManager headingAvailable])
+        return;
+    locMgr.headingFilter = kCLHeadingFilterNone;
+    [locMgr startUpdatingHeading];
+}
+
+- (void) turn_off_print_ann {
+    pthread_mutex_lock(&ann_print_timeout_mutex);
+    ann_print = 0;
+    skin_update_annunciator(3, 0, calcView);
+    ann_print_timeout_active = FALSE;
+    pthread_mutex_unlock(&ann_print_timeout_mutex);
+}
+
+- (void) print_ann_helper:(NSNumber *)set {
+    int prt = [set intValue];
+    [set release];
+    pthread_mutex_lock(&ann_print_timeout_mutex);
+    if (ann_print_timeout_active) {
+        [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(turn_off_print_ann) object:NULL];
+        ann_print_timeout_active = FALSE;
+    }
+    if (ann_print != prt) {
+        if (prt) {
+            ann_print = 1;
+            skin_update_annunciator(3, ann_print, calcView);
+        } else {
+            [self performSelector:@selector(turn_off_print_ann) withObject:NULL afterDelay:1];
+            ann_print_timeout_active = TRUE;
+        }
+    }
+    pthread_mutex_unlock(&ann_print_timeout_mutex);
 }
 
 @end
@@ -582,10 +723,24 @@ static void init_shell_state(int version) {
             state.skinName[0] = 0;
             /* fall through */
         case 0:
-            state.popupKeyboard = 0;
             /* fall through */
         case 1:
-            /* current version (SHELL_VERSION = 1),
+            state.alwaysOn = 0;
+            /* fall through */
+        case 2:
+            state.keyClicks = 1;
+            /* fall through */
+        case 3:
+            state.hapticFeedback = 0;
+            /* fall through */
+        case 4:
+            strcpy(state.landscapeSkinName, "Landscape");
+            state.orientationMode = 0;
+            state.maintainSkinAspect[0] = 1;
+            state.maintainSkinAspect[1] = 1;
+            /* fall through */
+        case 5:
+            /* current version (SHELL_VERSION = 5),
              * so nothing to do here since everything
              * was initialized from the state file.
              */
@@ -598,12 +753,15 @@ static void quit2(bool really_quit) {
 
     [PrintView dump];
     
-    if (print_txt != NULL)
+    if (print_txt != NULL) {
         fclose(print_txt);
+        print_txt = NULL;
+    }
     
     if (print_gif != NULL) {
         shell_finish_gif(gif_seeker, gif_writer);
         fclose(print_gif);
+        print_gif = NULL;
     }
     
     shell_spool_exit();
@@ -758,9 +916,9 @@ void shell_annunciators(int updn, int shf, int prt, int run, int g, int rad) {
         ann_shift = shf;
         skin_update_annunciator(2, ann_shift, calcView);
     }
-    if (prt != -1 && ann_print != prt) {
-        ann_print = prt;
-        skin_update_annunciator(3, ann_print, calcView);
+    if (prt != -1) {
+        NSNumber *n = [[NSNumber numberWithInt:prt] retain];
+        [calcView performSelectorOnMainThread:@selector(print_ann_helper:) withObject:n waitUntilDone:NO];
     }
     if (run != -1 && ann_run != run) {
         ann_run = run;
@@ -774,6 +932,15 @@ void shell_annunciators(int updn, int shf, int prt, int run, int g, int rad) {
         ann_rad = rad;
         skin_update_annunciator(7, ann_rad, calcView);
     }
+}
+
+int shell_always_on(int ao) {
+    int ret = state.alwaysOn;
+    if (ao != -1) {
+        state.alwaysOn = ao != 0;
+        [UIApplication sharedApplication].idleTimerDisabled = state.alwaysOn ? YES : NO;
+    }
+    return ret;
 }
 
 void shell_log(const char *message) {
@@ -853,11 +1020,11 @@ void shell_powerdown() {
     we_want_cpu = 1;
 }
 
-double shell_random_seed() {
+int8 shell_random_seed() {
     TRACE("shell_random_seed");
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    return ((tv.tv_sec * 1000000L + tv.tv_usec) & 0xffffffffL) / 4294967296.0;
+    return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
 unsigned int shell_milliseconds() {
@@ -952,7 +1119,7 @@ void shell_print(const char *text, int length,
         char buf[1000];
         
         if (print_gif != NULL
-            && gif_lines + height > state.printerGifMaxLength) {
+                && gif_lines + height > state.printerGifMaxLength) {
             shell_finish_gif(gif_seeker, gif_writer);
             fclose(print_gif);
             print_gif = NULL;
@@ -1010,7 +1177,13 @@ void shell_print(const char *text, int length,
         
         shell_spool_gif(bits, bytesperline, x, y, width, height, gif_writer);
         gif_lines += height;
-    done_print_gif:;
+
+        if (print_gif != NULL && gif_lines + 9 > state.printerGifMaxLength) {
+            shell_finish_gif(gif_seeker, gif_writer);
+            fclose(print_gif);
+            print_gif = NULL;
+        }
+        done_print_gif:;
     }
 }
 
@@ -1026,69 +1199,13 @@ int shell_read(char *buf, int buflen) {
 
 //////////////////////////////////////////////////////////////////////
 /////   Accelerometer, Location Services, and Compass support    /////
-///// Be sure to keep this in sync between both iPhone versions! /////
 //////////////////////////////////////////////////////////////////////
-
-static double accel_x = 0, accel_y = 0, accel_z = 0;
-static double loc_lat = 0, loc_lon = 0, loc_lat_lon_acc = 0, loc_elev = 0, loc_elev_acc = 0;
-static double hdg_mag = 0, hdg_true = 0, hdg_acc = 0, hdg_x = 0, hdg_y = 0, hdg_z = 0;
-
-@interface HardwareDelegate : NSObject <UIAccelerometerDelegate, CLLocationManagerDelegate> {}
-- (void)accelerometer:(UIAccelerometer *)accelerometer didAccelerate:(UIAcceleration *)acceleration;
-- (void)locationManager:(CLLocationManager *)manager didUpdateToLocation:(CLLocation *)newLocation fromLocation:(CLLocation *)oldLocation;
-- (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error;
-- (void)locationManager:(CLLocationManager *)manager didUpdateHeading:(CLHeading *)newHeading;
-- (BOOL)locationManagerShouldDisplayHeadingCalibration:(CLLocationManager *)manager;
-@end
-
-@implementation HardwareDelegate
-
-- (void)accelerometer:(UIAccelerometer *)accelerometer didAccelerate:(UIAcceleration *)acceleration {
-    accel_x = acceleration.x;
-    accel_y = acceleration.y;
-    accel_z = acceleration.z;
-    NSLog(@"Acceleration received: %g %g %g", accel_x, accel_y, accel_z);
-}
-
-- (void)locationManager:(CLLocationManager *)manager didUpdateToLocation:(CLLocation *)newLocation fromLocation:(CLLocation *)oldLocation {
-    loc_lat = newLocation.coordinate.latitude;
-    loc_lon = newLocation.coordinate.longitude;
-    loc_lat_lon_acc = newLocation.horizontalAccuracy;
-    loc_elev = newLocation.altitude;
-    loc_elev_acc = newLocation.verticalAccuracy;
-    NSLog(@"Location received: %g %g", loc_lat, loc_lon);
-}
-
-- (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error {
-    NSLog(@"Location error received: %@", [error localizedDescription]);
-}
-
-- (void)locationManager:(CLLocationManager *)manager didUpdateHeading:(CLHeading *)newHeading {
-    hdg_mag = newHeading.magneticHeading;
-    hdg_true = newHeading.trueHeading;
-    hdg_acc = newHeading.headingAccuracy;
-    hdg_x = newHeading.x;
-    hdg_y = newHeading.y;
-    hdg_z = newHeading.z;
-    NSLog(@"Heading received: %g", hdg_mag);
-}
-
-- (BOOL)locationManagerShouldDisplayHeadingCalibration:(CLLocationManager *)manager {
-    return YES;
-}
-
-@end
-
-static HardwareDelegate *hwDel = [HardwareDelegate alloc];
-static CLLocationManager *locMgr = NULL;
 
 int shell_get_acceleration(double *x, double *y, double *z) {
     static bool accelerometer_active = false;
     if (!accelerometer_active) {
-        UIAccelerometer *am = [UIAccelerometer sharedAccelerometer];
-        am.updateInterval = 1;
-        am.delegate = hwDel;
         accelerometer_active = true;
+        [calcView performSelectorOnMainThread:@selector(start_accelerometer) withObject:NULL waitUntilDone:NO];
     }
     *x = accel_x;
     *y = accel_y;
@@ -1098,17 +1215,9 @@ int shell_get_acceleration(double *x, double *y, double *z) {
 
 int shell_get_location(double *lat, double *lon, double *lat_lon_acc, double *elev, double *elev_acc) {
     static bool location_active = false;
-    if (locMgr == NULL) {
-        locMgr = [[CLLocationManager alloc] init];
-        locMgr.delegate = hwDel;
-        if ([locMgr respondsToSelector:@selector(requestWhenInUseAuthorization)])
-            [locMgr requestWhenInUseAuthorization];
-    }
     if (!location_active) {
-        locMgr.distanceFilter = kCLDistanceFilterNone;
-        locMgr.desiredAccuracy = kCLLocationAccuracyBest;
-        [locMgr startUpdatingLocation];
         location_active = true;
+        [calcView performSelectorOnMainThread:@selector(start_location) withObject:NULL waitUntilDone:NO];
     }
     *lat = loc_lat;
     *lon = loc_lon;
@@ -1120,16 +1229,9 @@ int shell_get_location(double *lat, double *lon, double *lat_lon_acc, double *el
 
 int shell_get_heading(double *mag_heading, double *true_heading, double *acc, double *x, double *y, double *z) {
     static bool heading_active = false;
-    if (locMgr == NULL) {
-        locMgr = [[CLLocationManager alloc] init];
-        locMgr.delegate = hwDel;
-    }
-    if (![CLLocationManager headingAvailable])
-        return 0;
     if (!heading_active) {
-        locMgr.headingFilter = kCLHeadingFilterNone;
-        [locMgr startUpdatingHeading];
         heading_active = true;
+        [calcView performSelectorOnMainThread:@selector(start_heading) withObject:NULL waitUntilDone:NO];
     }
     *mag_heading = hdg_mag;
     *true_heading = hdg_true;

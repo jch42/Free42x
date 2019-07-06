@@ -1,3 +1,415 @@
+2019-03-18: release 2.0.24h (Android only)
+
+* The screen update logic in the previous version was incorrect and caused the
+  app to appear unresponsive on many devices. Fixed.
+
+2019-03-17: release 2.0.24g (Android, iPhone, and Mac)
+
+* Android, iPhone, and Mac versions: Enabled non-integral display scaling.
+* Android and iPhone versions: added setting in Preferences to choose whether
+  to stretch skins to fill the screen, or to stretch them only to fill the
+  available width, while maintaining their original aspect ratio.
+* iPhone version: implemented support for landscape orientation.
+* iPhone version: fixed alignment of "Done" buttons.
+
+2019-03-08: release 2.0.24f (iPhone only)
+
+* Added Haptic Feedback setting in Preferences.
+
+2019-03-03: release 2.0.24e (Android only)
+
+* Fixed crash when calling ON or OFF from a program.
+* Fixed a bug that could leave a corrupted state file under certain
+  circumstances.
+
+2019-02-28: release 2.0.24d (Android only)
+
+* Fixed crashes while printing.
+
+2019-02-26: release 2.0.24c (Android and iPhone)
+
+* Android version: removed all restrictions on file selection dialogs, and
+  instead added a "Home" button, so you can always navigate back to
+  /sdcard/Android/data/com.thomasokken.free42 if you get stuck somewhere.
+* iPhone version: fixed the white bar that was showing up above the skin on
+  iPads running iOS 12.
+
+2019-02-25: release 2.0.24b (Android only)
+
+* Made file selection dialogs full-screen.
+* Fixed file selection behavior for Import Programs and Select Skin. It now
+  starts in the writable storage directory, but does allow navigation out of
+  it.
+
+2019-02-25: release 2.0.24a (Android and Mac)
+
+* Android version: Lifted file selector directory restriction for Import
+  Programs and skin selection, keeping it in place for Export Programs and
+  selecting print-out files.
+* Mac version: the previous release broke Import Programs. Fixed.
+
+2019-02-24: release 2.0.24
+
+* Made program pasting a bit more lenient: tabs are now treated as spaces, and
+  the following command names are now recognized: x, RCL*, RCLx, RCL/, STOx,
+  X#0?, X#Y?, X<>0?, and X<>Y? (in addition to all the alternate spellings that
+  were recognized previously).
+* iPhone version: added Key Clicks setting in Preferences.
+* Windows and Mac versions: now refuse to export zero programs. (The other
+  versions already did this.) Also tweaked the file selection dialogs a bit.
+* Android version: when running on 4.4 (KitKat) or later, now creates the
+  storage directory, /sdcard/Android/data/com.thomasokken.free42, as soon as it
+  has access. The file selection dialogs are now restricted to this directory
+  and its subdirectories.
+
+2019-02-18: release 2.0.23c (iPhone only)
+
+* The previous release calculated the skin scale incorrectly for certain skins,
+  causing them to be displayed too small. Fixed.
+
+2019-02-17: release 2.0.23b (iPhone only)
+
+* Enabled non-integral scaling for skins, so skins can fill the width of the
+  screen on iPhone X series (X, XR, XS, XS Max) even if they were designed for
+  older models with 3:4 or 9:16 screen aspect ratios.
+
+2019-02-11: release 2.0.23a (iPhone only)
+
+* Replaced iPhone X skin with a more screen-filling one.
+
+2019-02-09: release 2.0.23
+
+* SOLVE now tries harder when secant extrapolation gets stuck due to the secant
+  being excessively steep.
+* 0^0 now returns Invalid Data, not 1, for all combinations of real and complex
+  arguments. The rationale for returning 1 was mathematically questionable, and
+  Invalid Data is what the real HP-42S returns.
+* iPhone version: added basic iPhone X support.
+
+2019-01-26: release 2.0.22c (Android only)
+
+* New Main Menu. This should be compatible with all Android versions, including
+  Amazon Fire HD tablets and other devices that sabotaged the old menu after it
+  started targeting Android 8.
+* Added code to request storage and GPS access when needed.
+
+2019-01-13: release 2.0.22b (Android only)
+
+* Another fix for invisible overflow menu items.
+
+2019-01-12: release 2.0.22a (Android only)
+
+* Fixed invisible overflow menu items.
+
+2019-01-12: release 2.0.22
+
+* Made pasting real scalars a bit more lenient: it is now permitted for there
+  to be trailing non-numeric characters after the number, so pasting a number
+  with an attached unit, say 50mm, yields the number 50, not the string "50mm".
+* INPUT should clear any message from the display before showing the prompt,
+  but it didn't. Fixed.
+* When ALPHA mode is active on top of VARMENU, ASTO and ARCL should show the
+  regular variable menus, but they showed the VARMENU instead. Fixed.
+* During command entry, SST and BST should be disabled, but the code that tried
+  to do this also prevented some legitimate uses of up-arrow and down-arrow,
+  such as switching menu rows during FIX IND __.
+* While entering a numeric LBL, it should be possible to switch to ALPHA mode,
+  using Shift-ENTER, to switch from, say, LBL 3_ to LBL "3_ , as an alternative
+  method of entering ALPHA labels that start with a digit. The HP-42S allows
+  this, but Free42 didn't. Fixed.
+* Android and iPhone versions: OFF now turns off "continuous on" mode.
+
+2018-11-24: release 2.0.21b (Windows only)
+
+* Fixed Alt-Tab behavior.
+
+2018-07-03: release 2.0.21a (iPhone only)
+
+* Turned off all optimization for release builds; the latest iOS developer
+  tools appear to have a buggy optimizer, and it is causing number display in
+  OCT and HEX modes to misbehave -- they show numbers with unwanted leading
+  zeroes, for a total number of digits that would be appropriate for BIN mode,
+  so 1=>1, 2=>02, 3=>03, 4=>004, etc.
+
+2018-06-24: release 2.0.21
+
+* Fixed complex SQRT so it returns exact results when Re(x) = 0 and Im(x)/2 is
+  a perfect square.
+* VARMENU would step through rows of multi-line menus in the wrong order.
+  (You needed a function with 13 or more MVARs to notice this.) Fixed.
+* When printing to GIF, changing the filename did not cause the GIF numbering
+  sequence to restart at 1. Fixed.
+* When printing to GIF, the output file is now flushed and closed immediately
+  if there is no more room for at least another 9 pixels after printing -- in
+  other words, when no more printing to that file is possible anyway. It used
+  to wait until the next print request, or app close, before flushing and
+  closing in this situation.
+  Also, the minimum height of a GIF output file is now 16 pixels, down from 32.
+
+2018-03-12: release 2.0.20
+
+* MATA, MATB, and MATX should exhibit the same stack lift behavior as EDIT and
+  EDITN, but didn't. Fixed.
+
+2018-03-10: release 2.0.19
+
+* Another EDIT/EDITN fix: in the real HP-42S, EDIT and EDITN don't actually
+  disable stack lift; they preserve the stack lift state, which you can observe
+  if you do ENTER vs. a stack-lift-enabling operation (say, X<>Y) just before
+  invoking them. This behavior is not really useful, but it needs to be
+  emulated anyway, since not doing so risks breaking HP-42S programs.
+  This does not affect GOTO Row/Column.
+
+2018-03-09: release 2.0.18
+
+* EDIT, EDITN, and GOTO Row/Column should disable stack lift, but they didn't.
+  Fixed.
+
+2018-03-02: release 2.0.17
+
+* Inserting or deleting an END would not always clear cached local GTO or XEQ
+  targets, potentially causing local GTO or XEQ commands to jump to the wrong
+  locations. Fixed, and also added code to repair such damage in existing state
+  files.
+
+2018-02-22: release 2.0.16
+
+* 0 SEED initialized the random seed incorrectly, wasting one digit of
+  randomness. Fixed.
+* When importing raw files, E and -E are now recognized as 1 and -1, for
+  compatibility with HP-41 raw files with synthetic numbers.
+* When importing raw files, synthetic instructions are now handled more like
+  the real HP-42S handles them. Basically, any argument >= 100 that isn't a
+  stack register and that isn't a local label is treated as numeric. Arguments
+  112-116 are always stack registers, even when that makes no sense (flags, 
+  SigmaREG, etc.); 102-111 and 123-127 are only considered as A-J and a-e in
+  LBL, GTO, and XEQ.
+  Note that nothing very interesting happens as a result of these changes. They
+  won't make synthetic HP-41C code work in Free42 any more than it does in the
+  HP-42S; the behavior is just more like the real 42S now.
+
+2018-02-17: release 2.0.15
+
+* POSA would not find the search string if its only occurrence was at the very
+  end of the alpha register. Fixed.
+* Android version: tweaked handling of low-battery indicator.
+
+2018-02-10: release 2.0.14
+
+* In Export Programs, removed the hard-coded buffer size for the list of
+  programs, so you should now see all your programs in the list, no matter how
+  many there are.
+* When Pasting complex numbers in a+bi notation, the imaginary unit must now be
+  either i or j; the alternative spellings I and J are no longer recognized.
+
+2018-02-06: release 2.0.13
+
+* Paste didn't handle numbers with negative exponents correctly. Fixed.
+
+2018-02-02: release 2.0.12d (iPhone only)
+
+* Fixed crash in GIF printing.
+
+2018-01-30: release 2.0.12c (Android only)
+
+* Another fix for crash on orientation change while printing.
+
+2018-01-29: release 2.0.12b (Android only)
+
+* Switching between portrait and landscape modes, while printing was in
+  progress, could cause a crash. Fixed.
+
+2018-01-28: release 2.0.12a (Android only)
+
+* Fixed handling of state files that were corrupted in a way that caused
+  persistent crashes on the first keystroke.
+
+2018-01-27: release 2.0.12
+
+* Fixed pasting of SIZE lines.
+* When pasting numbers, spaces are now allowed as thousands separators.
+* Mac and MacDashboard versions: are now 64-bit.
+* Mac and GTK versions: fixed Caps Lock handling, so Caps Lock + Esc no longer
+  exits.
+* Android and iPhone versions: implemented "continuous on" mode (ON function,
+  flag 44).
+
+2018-01-26: release 2.0.11a (Android only)
+
+* Removed the cleanup of variables in core_quit(); it looks like this was
+  responsible for the failure mode where the app would crash at the first
+  keystroke, consistently, forcing uninstall/reinstall.
+* Pasting numbers that ended in CRLF, as when copying a single cell from Excel,
+  didn't work; they were interpreted as strings. Fixed.
+
+2018-01-14: release 2.0.11
+
+* Copy now ignores flag 29 (thousands separators) and always copies numbers
+  without separators. This fixes certain surprising / undesirable behaviors
+  when pasting numbers into spreadsheets or programs.
+* When entering a program line in NORM or TRACE modes, the line would be
+  printed, even when printing was disabled. Fixed.
+* MATA and MATB, in the SIMQ menu, would crash if the MATA or MATB variables
+  were missing. Fixed, and also cleaned up type checks in MATX.
+* Android version: printing lots of output quickly, for example, by running a
+  program in TRACE mode, would cause the user interface to become sluggish or
+  even unresponsive on some devices. Fixed by posting UI updates less
+  aggressively.
+
+2018-01-07: release 2.0.10
+
+* Program Paste without line numbers didn't handle certain numbers,
+  specifically, those that started with a digit and didn't consist of only
+  digits. Fixed.
+
+2018-01-07: release 2.0.9
+
+* Program Paste no longer requires line numbers.
+* The CUSTOM command would toggle the CUSTOM menu, but that was wrong: it
+  should only activate that menu, never deactivate it. Fixed.
+* DIM?, EDIT, and EDITN didn't print X in TRACE mode. Fixed.
+* Selecting the already-active menu did not cause the display to be repainted,
+  even though it should: there might be a message, which should be removed in
+  that case. Fixed.
+* All versions except MacDashboard: made the print annunciator linger for one
+  second after printing stops. This makes it more noticeable, so printing is
+  less likely to go unnoticed on fast devices.
+* Mac version: implemented battery checker.
+* GTK version: added /sys/class/power_supply support in battery checker.
+
+2017-12-26: release 2.0.8
+
+* MENU (activating the programmable menu) while in ALPHA mode didn't turn off
+  the alpha_mode flag, leading to bad behavior or even crashes if any menu keys
+  were subsequently pressed.
+
+2017-12-21: release 2.0.7c (Windows only)
+
+* Decimal: SIN and COS of 45 degrees or 50 grads returned an inaccurate result,
+  correct to only 16 digits. Fixed.
+
+2017-12-18: release 2.0.7b (Android only)
+
+* The "Always Paint Entire Display" setting, introduced in the previous
+  version, didn't stick after app restart. Fixed.
+
+2017-12-17: release 2.0.7a (Android only)
+
+* Added "Always Paint Entire Display" option. This prevents display glitches
+  with certain combinations of devices and skins.
+
+2017-11-19: release 2.0.7
+
+* Changed the RAN and SEED functions to match the behavior of the real HP-42S.
+  The previous implementation used the algorithm from the HP-41C Standard Pac,
+  which produced numbers with only 6 significant digits.
+* The up/down annunciator (multi-row menu) did not get updated correctly when
+  VARMENU was activated, including in the solver and integrator. Fixed.
+* Windows version: restored the Calculator key mapping option, which I had
+  removed in 1.5.14. It turns out that keyboards with a dedicated Calculator
+  key do still exist.
+* Android version: the menu icons for Copy, Paste, and Print-Out were displayed
+  too large, overlapping the menu item labels on some devices. Fixed.
+* Windows, Linux, Mac, and MacDashboard versions: added keyboard mappings
+  g => GTO and p => PI. On existing installations, users must delete or rename
+  the existing keymap and restart for this to take effect.
+* iPhone version: painting the display could be glitchy if either or both of
+  its coordinates were odd. Fixed by forcing them to be even.
+
+2017-08-12: release 2.0.6
+
+* Decimal version: fixed ISG and DSE for values >= 2^63 (9.2e18).
+* Fixed a couple of bugs in how changes to internal SOLVE and INTEG data
+  structures are handled.
+
+2017-07-30: release 2.0.5
+
+* Fixed INTEG termination condition. It would return inaccurate results in
+  certain cases.
+* Fixed importing numbers with exponent but no mantissa, e.g. E3, -E-5, etc.
+  This got broken in 1.5.
+* Fixed crash when trying to allocate ridiculously large matrices.
+* While entering a numeric argument, the up-arrow and down-arrow keys would
+  perform BST and SST, which should be blocked. Fixed.
+* Testing flag 75 would turn on the programmable menu. Fixed.
+* iPhone version: fixed a few display alignment issues with the built-in 4"
+  skin.
+
+2017-05-29: release 2.0.4
+
+* Implemented special-case code for pure real and pure imaginary numbers in all
+  the complex logarithmic, trigonometric, and hyperbolic functions.
+
+2017-05-28: release 2.0.3
+
+* Fixed a few edge cases in complex functions.
+* The last digit in full-precision representation (SHOW, Copy) could be off by
+  one in certain circumstances. Fixed.
+* On cold start, now clearing flags 21 (printer enable) and 55 (printer
+  existence), to match the behavior of the real HP-42S.
+* Removed "raw text" print option; it has been obsolete since the introduction
+  of UTF-8 printing in 1.5.11, since Unicode can represent the HP-42S character
+  set directly.
+* iPhone version: LOCAT didn't work when its initial invocation happened from a
+  program. Fixed.
+* In the About box, replaced the link to the Free42 discussion group with a
+  link to the Alternative HP-42S/Free42 Manual.
+
+2017-04-28: release 2.0.2
+
+* In Unicode-to-HP conversion, translate "\LF" and "[LF]" to 10, not 138.
+  Character 138 only exists to *represent* LF, but isn't available in the ALPHA
+  menu and therefore cannot appear in non-synthetic programs.
+* Unicode-to-HP conversion handles curly quotes now (U+2018, U+2019, U+201C,
+  U+201D).
+
+2017-04-23: release 2.0.1 (beta)
+
+* Change right-pointing triangle from Unicode U+25B6 (black right-pointing
+  triangle) to U+25B8 (black right-pointing small triangle); the former gets
+  rendered as an emoji in iOS, while the latter doesn't, plus, the smaller
+  triangle looks better in listings anyway.
+* MacDashboard version: Fixed multi-line pasting.
+
+2017-04-22: release 2.0 (beta)
+
+* Copy & Paste now handle matrices, ALPHA mode, and PRGM mode.
+
+2017-04-01: release 1.5.15
+
+* Instead of being limited to 12 mantissa digits, full precision (34 digits in
+  the Decimal version, 16 digits in Binary) is now supported for number entry,
+  SHOW, Copy, and Paste.
+
+2017-03-11: release 1.5.14
+
+* Changed complex TAN and TANH to use more accurate formulae.
+* The Time Module functions used to keep track of MDY/DMY modes using an
+  invisible flag. For better HP-41 compatibility, they now use flag 31.
+* Android version: Made state file writing more robust. If writing the state
+  file fails, it now keeps the previous one, instead of leaving behind a
+  partial or corrupt one.
+* GTK version, Free42 Binary only: Some (recent?) versions of GTK set the
+  LC_NUMERIC locale, which Free42 expects to always be "C". This causes number
+  entry and display to be messed up in locales where the decimal is not ".",
+  including most of Europe. I added code to force LC_NUMERIC back to "C" after
+  gtk_init(), fixing this problem.
+* Binary version: Fixed binary round-off problem in ADATE (for example,
+  10.102010 would be rendered as 10/10/2009).
+
+2017-01-22: release 1.5.13
+
+* When DIM, SIZE, or SIMQ resize the indexed matrix, and when CLV deletes the
+  indexed matrix, IJ should be set to (1, 1); and when DIM, SIZE, or SIMQ try
+  to resize the matrix currently being edited by EDITN, and when CLV tries to
+  delete the matrix currently being edited by EDITN, they should return a
+  "Restricted Operation" error. Neither happened, creating the potential for
+  memory corruption if IJ ended up pointing outside the matrix' data array.
+  Fixed.
+* STO and STO* allowed the target to be the matrix under edit by EDITN. They
+  should not allow this, but return "Restricted Operation" instead. Fixed.
+* CLALL didn't always exit all menus. Fixed.
+
 2016-10-03: release 1.5.12
 
 * Android version: Fixed UTF-8 printing, which was broken in 1.5.11.
@@ -73,8 +485,8 @@
 * Android version: changed targetSdkVersion from 3.0 to 2.2. This should make
   the menu reliably accessible in all Android versions and with all display
   styles.
-* Resurrected the Mac OS X Dashboard version; the display repaint logic now
-  supports Yosemite (10.10) and later.
+* Resurrected the MacDashboard version; the display repaint logic now supports
+  Yosemite (10.10) and later.
 
 2016-03-19: release 1.5.7a (Android only)
 
@@ -395,7 +807,7 @@
 * iPhone version: implemented ACCEL, LOCAT, and HEADING functions, for querying
   the device's accelerometer, location services (GPS on the 3G and 3GS; WiFi-
   based on all other models), and compass (3GS only).
-* All versions except Mac Dashboard: for skins, increased the maximum macro
+* All versions except MacDashboard: for skins, increased the maximum macro
   length from 31 to 63. The old limit was too small to allow macros that step
   forward all the way to the end of the FCN catalog, and supporting such macros
   is necessary now that the length of the FCN catalog is no longer fixed at 42

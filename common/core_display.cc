@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -16,6 +16,7 @@
  *****************************************************************************/
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "core_display.h"
 #include "core_commands2.h"
@@ -24,6 +25,7 @@
 #include "core_tables.h"
 #include "core_variables.h"
 #include "shell.h"
+#include "shell_spool.h"
 
 
 /********************/
@@ -752,6 +754,9 @@ void draw_pattern(phloat dx, phloat dy, const char *pattern, int pattern_width){
 void fly_goose() {
     static uint4 lastgoosetime = 0;
     uint4 goosetime = shell_milliseconds();
+    if (goosetime < lastgoosetime)
+        // shell_millisends() wrapped around
+        lastgoosetime = 0;
     if (goosetime - 100 < lastgoosetime)
         /* No goose movements if the most recent one was less than 100 ms
          * ago; in other words, maximum goose speed is 10 positions/second
@@ -938,7 +943,8 @@ void clear_row(int row) {
 }
 
 static int prgmline2buf(char *buf, int len, int4 line, int highlight,
-                        int cmd, arg_struct *arg) {
+                        int cmd, arg_struct *arg, bool shift_left = false,
+                        bool highlight_final_end = true) {
     int bufptr = 0;
     if (line != -1) {
         if (line < 10)
@@ -955,7 +961,7 @@ static int prgmline2buf(char *buf, int len, int4 line, int highlight,
         string2buf(buf, len, &bufptr, "{ ", 2);
         bufptr += int2string(size, buf + bufptr, len - bufptr);
         string2buf(buf, len, &bufptr, "-Byte Prgm }", 12);
-    } else if (flags.f.alpha_mode && mode_alpha_entry && highlight) {
+    } else if (core_alpha_menu() && mode_alpha_entry && highlight) {
         int append = entered_string_length > 0 && entered_string[0] == 127;
         if (append) {
             string2buf(buf, len, &bufptr, "\177\"", 2);
@@ -966,15 +972,32 @@ static int prgmline2buf(char *buf, int len, int4 line, int highlight,
             string2buf(buf, len, &bufptr, entered_string, entered_string_length);
         }
         char2buf(buf, len, &bufptr, '_');
-    } else if (cmd == CMD_END && current_prgm == prgms_count - 1) {
+    } else if (highlight_final_end && cmd == CMD_END
+                    && current_prgm == prgms_count - 1) {
         string2buf(buf, len, &bufptr, ".END.", 5);
     } else if (cmd == CMD_NUMBER) {
         char *num = phloat2program(arg->val_d);
-        char c;
-        while ((c = *num++) != 0 && bufptr < len)
-            buf[bufptr++] = c;
-        if (c != 0)
-            buf[bufptr - 1] = 26;
+        int numlen = strlen(num);
+        if (bufptr + numlen <= len) {
+            memcpy(buf + bufptr, num, numlen);
+            bufptr += numlen;
+        } else {
+            if (shift_left) {
+                buf[0] = 26;
+                if (numlen >= len - 1) {
+                    memcpy(buf + 1, num + numlen - len + 1, len - 1);
+                } else {
+                    int off = bufptr + numlen - len;
+                    memmove(buf + 1, buf + off + 1, bufptr - off - 1);
+                    bufptr -= off;
+                    memcpy(buf + bufptr, num, len - bufptr);
+                }
+            } else {
+                memcpy(buf + bufptr, num, len - bufptr - 1);
+                buf[len - 1] = 26;
+            }
+            bufptr = len;
+        }
     } else if (cmd == CMD_STRING) {
         int append = arg->length > 0 && arg->val.text[0] == 127;
         if (append)
@@ -987,6 +1010,60 @@ static int prgmline2buf(char *buf, int len, int4 line, int highlight,
         bufptr += command2buf(buf + bufptr, len - bufptr, cmd, arg);
 
     return bufptr;
+}
+
+void tb_write(textbuf *tb, const char *data, size_t size) {
+    if (tb->size + size > tb->capacity) {
+        size_t newcapacity = tb->capacity == 0 ? 1024 : (tb->capacity << 1);
+        while (newcapacity < tb->size + size)
+            newcapacity <<= 1;
+        char *newbuf = (char *) realloc(tb->buf, newcapacity);
+        if (newbuf == NULL) {
+            /* Bummer! Let's just append as much as we can */
+            memcpy(tb->buf + tb->size, data, tb->capacity - tb->size);
+            tb->size = tb->capacity;
+            tb->fail = true;
+        } else {
+            tb->buf = newbuf;
+            tb->capacity = newcapacity;
+            memcpy(tb->buf + tb->size, data, size);
+            tb->size += size;
+        }
+    } else {
+        memcpy(tb->buf + tb->size, data, size);
+        tb->size += size;
+    }
+}
+
+void tb_write_null(textbuf *tb) {
+    char c = 0;
+    tb_write(tb, &c, 1);
+}
+
+void tb_print_current_program(textbuf *tb) {
+    int4 pc = 0;
+    int line = 0;
+    int cmd;
+    arg_struct arg;
+    bool end = false;
+    char buf[100];
+    char utf8buf[500];
+    do {
+        if (line > 0) {
+            get_next_command(&pc, &cmd, &arg, 0);
+            if (cmd == CMD_END)
+                end = true;
+        }
+        int len = prgmline2buf(buf, 100, line, cmd == CMD_LBL, cmd, &arg, false, false);
+        for (int i = 0; i < len; i++)
+            if (buf[i] == 10)
+                buf[i] = 138;
+        int utf8len = hp2ascii(utf8buf, buf, len);
+        utf8buf[utf8len++] = '\r';
+        utf8buf[utf8len++] = '\n';
+        tb_write(tb, utf8buf, utf8len);
+        line++;
+    } while (!end);
 }
 
 void display_prgm_line(int row, int line_offset) {
@@ -1027,7 +1104,7 @@ void display_prgm_line(int row, int line_offset) {
         /* Should not get offset == -1 when at line 0! */
     }
 
-    bufptr = prgmline2buf(buf, len, tmpline, line_offset == 0, cmd, &arg);
+    bufptr = prgmline2buf(buf, len, tmpline, line_offset == 0, cmd, &arg, row == -1);
 
     if (row == -1) {
         clear_display();
@@ -1299,6 +1376,7 @@ void draw_varmenu() {
     varmenu_rows = (num_mvars + 5) / 6;
     if (varmenu_row >= varmenu_rows)
         varmenu_row = varmenu_rows - 1;
+    shell_annunciators(varmenu_rows > 1, -1, -1, -1, -1, -1);
 
     row = 0;
     key = 0;
@@ -1376,8 +1454,6 @@ typedef struct {
 } extension_struct;
 
 static extension_struct extensions[] = {
-    { CMD_OPENF,   CMD_DELP,    &core_settings.enable_ext_copan    },
-    { CMD_DROP,    CMD_DROP,    &core_settings.enable_ext_bigstack },
     { CMD_ACCEL,   CMD_ACCEL,   &core_settings.enable_ext_accel    },
     { CMD_LOCAT,   CMD_LOCAT,   &core_settings.enable_ext_locat    },
     { CMD_HEADING, CMD_HEADING, &core_settings.enable_ext_heading  },
@@ -1611,10 +1687,66 @@ void display_mem() {
     flush_display();
 }
 
+static int procrustean_phloat2string(phloat d, char *buf, int buflen) {
+    char tbuf[100];
+    int tbuflen = phloat2string(d, tbuf, 100, 0, 0, 3,
+                                flags.f.thousands_separators, MAX_MANT_DIGITS);
+    if (tbuflen <= buflen) {
+        memcpy(buf, tbuf, tbuflen);
+        return tbuflen;
+    }
+    if (flags.f.thousands_separators) {
+        tbuflen = phloat2string(d, tbuf, 100, 0, 0, 3, 0, MAX_MANT_DIGITS);
+        if (tbuflen <= buflen) {
+            memcpy(buf, tbuf, tbuflen);
+            return tbuflen;
+        }
+    }
+    int epos = 0;
+    while (epos < tbuflen && tbuf[epos] != 24)
+        epos++;
+    if (epos == tbuflen) {
+        int dpos = buflen - 2;
+        char dec = flags.f.decimal_point ? '.' : ',';
+        while (dpos >= 0 && tbuf[dpos] != dec)
+            dpos--;
+        if (dpos != -1) {
+            memcpy(buf, tbuf, buflen - 1);
+            buf[buflen - 1] = 26;
+            return buflen;
+        }
+        tbuflen = phloat2string(d, tbuf, 100, 0, MAX_MANT_DIGITS - 1, 1, 0, MAX_MANT_DIGITS);
+        epos = 0;
+        int zero_since = -1;
+        while (epos < tbuflen && tbuf[epos] != 24) {
+            if (tbuf[epos] == '0') {
+                if (zero_since == -1)
+                    zero_since = epos;
+            } else {
+                zero_since = -1;
+            }
+            epos++;
+        }
+        if (zero_since != -1) {
+            memmove(tbuf + zero_since, tbuf + epos, tbuflen - epos);
+            tbuflen -= epos - zero_since;
+        }
+        if (tbuflen <= buflen) {
+            memcpy(buf, tbuf, tbuflen);
+            return tbuflen;
+        }
+    }
+    int expsize = tbuflen - epos;
+    memcpy(buf, tbuf, buflen - expsize - 1);
+    buf[buflen - expsize - 1] = 26;
+    memcpy(buf + buflen - expsize, tbuf + epos, expsize);
+    return buflen;
+}
+
 void show() {
     if (flags.f.prgm_mode)
         display_prgm_line(-1, 0);
-    else if (flags.f.alpha_mode) {
+    else if (core_alpha_menu()) {
         clear_display();
         if (reg_alpha_length <= 22)
             draw_string(0, 0, reg_alpha, reg_alpha_length);
@@ -1623,14 +1755,17 @@ void show() {
             draw_string(0, 1, reg_alpha + 22, reg_alpha_length - 22);
         }
     } else {
-        char buf[44];
+        char buf[45];
         int bufptr;
         clear_display();
         switch (reg_x->type) {
             case TYPE_REAL: {
-                bufptr = phloat2string(((vartype_real *) reg_x)->x, buf, 44,
+                bufptr = phloat2string(((vartype_real *) reg_x)->x, buf, 45,
                                        2, 0, 3,
-                                       flags.f.thousands_separators);
+                                       flags.f.thousands_separators, MAX_MANT_DIGITS);
+                if (bufptr == 45)
+                    bufptr = phloat2string(((vartype_real *) reg_x)->x, buf,
+                                           44, 2, 0, 3, 0, MAX_MANT_DIGITS);
                 if (bufptr <= 22)
                     draw_string(0, 0, buf, bufptr);
                 else {
@@ -1657,13 +1792,9 @@ void show() {
                     x = c->re;
                     y = c->im;
                 }
-                bufptr = phloat2string(x, buf, 22,
-                                       0, 0, 3,
-                                       flags.f.thousands_separators);
+                bufptr = procrustean_phloat2string(x, buf, 22);
                 draw_string(0, 0, buf, bufptr);
-                bufptr = phloat2string(y, buf, 22,
-                                       0, 0, 3,
-                                       flags.f.thousands_separators);
+                bufptr = procrustean_phloat2string(y, buf, 21);
                 if (flags.f.polar) {
                     draw_char(0, 1, 23);
                     draw_string(1, 1, buf, bufptr);
@@ -1927,7 +2058,7 @@ void redisplay() {
             display_command(cmd_row);
     }
 
-    if (!flags.f.alpha_mode && !flags.f.prgm_mode) {
+    if (!core_alpha_menu() && !flags.f.prgm_mode) {
         if (avail_rows == 1) {
             if (!flags.f.message)
                 display_x(0);
@@ -1967,7 +2098,7 @@ void redisplay() {
                     display_prgm_line(1, 0);
             }
         }
-    } else if (flags.f.alpha_mode && avail_rows != 0 && !flags.f.message) {
+    } else if (core_alpha_menu() && avail_rows != 0 && !flags.f.message) {
         int avail = mode_alpha_entry ? 21 : 22;
         if (reg_alpha_length <= avail) {
             draw_string(0, 0, reg_alpha, reg_alpha_length);
@@ -2154,9 +2285,7 @@ int command2buf(char *buf, int len, int cmd, const arg_struct *arg) {
     int bufptr = 0;
 
     int4 xrom_arg;
-    if (!core_settings.enable_ext_copan && cmd >= CMD_OPENF && cmd <= CMD_DELP
-            || !core_settings.enable_ext_bigstack && cmd == CMD_DROP
-            || !core_settings.enable_ext_accel && cmd == CMD_ACCEL
+    if (!core_settings.enable_ext_accel && cmd == CMD_ACCEL
             || !core_settings.enable_ext_locat && cmd == CMD_LOCAT
             || !core_settings.enable_ext_heading && cmd == CMD_HEADING
             || !core_settings.enable_ext_time && cmd >= CMD_ADATE && cmd <= CMD_SWPT
@@ -2340,9 +2469,10 @@ void set_plainmenu(int menuid) {
     mode_alphamenu = MENU_NONE;
     mode_transientmenu = MENU_NONE;
 
-    if (menuid == mode_plainmenu)
+    if (menuid == mode_plainmenu) {
         mode_plainmenu_sticky = 1;
-    else if (menuid == MENU_CUSTOM1
+        redisplay();
+    } else if (menuid == MENU_CUSTOM1
             || menuid == MENU_CUSTOM2
             || menuid == MENU_CUSTOM3) {
         mode_plainmenu = menuid;

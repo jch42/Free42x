@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -53,6 +53,17 @@ void print_display();
 int print_program(int prgm_index, int4 pc, int4 lines, int normal);
 void print_program_line(int prgm_index, int4 pc);
 int command2buf(char *buf, int len, int cmd, const arg_struct *arg);
+
+typedef struct {
+    char *buf;
+    size_t size;
+    size_t capacity;
+    bool fail;
+} textbuf;
+
+void tb_write(textbuf *tb, const char *data, size_t size);
+void tb_write_null(textbuf *tb);
+void tb_print_current_program(textbuf *tb);
 
 #define MENULEVEL_COMMAND   0
 #define MENULEVEL_ALPHA     1

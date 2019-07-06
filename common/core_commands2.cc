@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -34,10 +34,12 @@
 /********************************************************/
 
 static const char *virtual_flags =
-    /* 00-49 */ "00000000000000000000000000010000000000000000011101"
+    /* 00-49 */ "00000000000000000000000000010000000000000000111111"
     /* 50-99 */ "00010000000000010000000001000000000000000000000000";
 
 int docmd_sf(arg_struct *arg) {
+    if (arg->type == ARGTYPE_STK)
+        return ERR_NONEXISTENT;
     int err;
     int4 num;
     err = arg_to_num(arg, &num);
@@ -63,6 +65,8 @@ int docmd_sf(arg_struct *arg) {
 }
 
 int docmd_cf(arg_struct *arg) {
+    if (arg->type == ARGTYPE_STK)
+        return ERR_NONEXISTENT;
     int err;
     int4 num;
     err = arg_to_num(arg, &num);
@@ -81,6 +85,8 @@ int docmd_cf(arg_struct *arg) {
 }
 
 int docmd_fs_t(arg_struct *arg) {
+    if (arg->type == ARGTYPE_STK)
+        return ERR_NONEXISTENT;
     int err;
     int4 num;
     err = arg_to_num(arg, &num);
@@ -95,6 +101,8 @@ int docmd_fs_t(arg_struct *arg) {
 }
 
 int docmd_fc_t(arg_struct *arg) {
+    if (arg->type == ARGTYPE_STK)
+        return ERR_NONEXISTENT;
     int err;
     int4 num;
     err = arg_to_num(arg, &num);
@@ -109,6 +117,8 @@ int docmd_fc_t(arg_struct *arg) {
 }
 
 int docmd_fsc_t(arg_struct *arg) {
+    if (arg->type == ARGTYPE_STK)
+        return ERR_NONEXISTENT;
     int err;
     int4 num;
     err = arg_to_num(arg, &num);
@@ -128,6 +138,8 @@ int docmd_fsc_t(arg_struct *arg) {
 }
 
 int docmd_fcc_t(arg_struct *arg) {
+    if (arg->type == ARGTYPE_STK)
+        return ERR_NONEXISTENT;
     int err;
     int4 num;
     err = arg_to_num(arg, &num);
@@ -276,13 +288,60 @@ int docmd_ran(arg_struct *arg) {
 int docmd_seed(arg_struct *arg) {
     if (reg_x->type == TYPE_REAL) {
         phloat x = ((vartype_real *) reg_x)->x;
-        int i;
-        if (x == 0)
-            random_number = shell_random_seed();
-        else
-            random_number = x - floor(x);
-        for (i = 0; i < 10; i++)
-            math_random();
+        if (x == 0) {
+            int8 s = shell_random_seed();
+            if (s < 0)
+                s = -s;
+            s %= 100000000000000LL;
+            s = s * 10 + 1;
+            random_number_high = s / 100000000LL;
+            random_number_low = s % 100000000LL;
+            return ERR_NONE;
+        }
+        if (x < 0)
+            x = -x;
+        #ifdef BCD_MATH
+            const phloat e12(1000000000000LL);
+            if (x >= 1) {
+                int exp = to_int(floor(log10(x)));
+                Phloat mant = floor(x * pow(Phloat(10), 11 - exp) + 0.5);
+                if (mant >= Phloat(1000000000000LL)) {
+                    mant /= 10;
+                    exp++;
+                }
+                x = (mant + ((exp + 1) % 100) / Phloat(100) + Phloat(1, 1000)) / e12;
+            } else if (x >= Phloat(1LL, 1000000000000LL)) {
+                x = floor(x * e12) / e12 + Phloat(1LL, 1000000000000000LL);
+            } else {
+                int exp = to_int(floor(log10(x) + 10000));
+                if (exp > 9984)
+                    exp = 9984;
+                x = ((exp + 16) % 100) / Phloat(100000000000000LL) + Phloat(1LL, 1000000000000000LL);
+            }
+            random_number_high = to_int8(x * Phloat(10000000));
+            random_number_low = to_int8(fmod(x * Phloat(1000000000000000LL), Phloat(100000000)));
+        #else
+            if (x >= 1) {
+                int exp = (int) floor(log10(x));
+                int8 mant = (int8) floor(x * pow(10.0, 11 - exp) + 0.5);
+                if (mant >= 1000000000000LL) {
+                    mant /= 10;
+                    exp++;
+                }
+                random_number_high = mant / 100000;
+                random_number_low = (mant % 100000) * 1000L + (exp + 1) % 100 * 10 + 1;
+            } else if (x >= 1e-12) {
+                int8 t = (int8) floor(x * 1e12);
+                random_number_high = t / 100000;
+                random_number_low = (t % 100000) * 1000L + 1;
+            } else {
+                int exp = (int) floor(log10(x) + 1000);
+                if (exp > 984)
+                    exp = 984;
+                random_number_high = 0;
+                random_number_low = (exp + 16) % 100 * 10 + 1;
+            }
+        #endif
         return ERR_NONE;
     } else if (arg->type == TYPE_STRING)
         return ERR_ALPHA_DATA_IS_INVALID;
@@ -359,6 +418,7 @@ int docmd_input(arg_struct *arg) {
         return ERR_INVALID_TYPE;
     }
 
+    docmd_cld(NULL);
     recall_result(v);
     return ERR_STOP;
 }
@@ -406,9 +466,11 @@ int view_helper(arg_struct *arg, int print) {
     flags.f.two_line_message = 0;
 
     if (print && (flags.f.printer_enable || !program_running())) {
-        if (flags.f.printer_exists)
+        if (flags.f.printer_exists) {
+	    shell_annunciators(-1, -1, 1, -1, -1, -1);
             print_wide(buf, part2, buf + part2, bufptr - part2);
-        else
+	    shell_annunciators(-1, -1, 0, -1, -1, -1);
+	} else
             return ERR_STOP;
     }
     return ERR_NONE;
@@ -505,9 +567,15 @@ int docmd_pse(arg_struct *arg) {
 
 static int generic_loop_helper(phloat *x, bool isg) {
     phloat t;
-    int8 i, j, k;
+    #ifdef BCD_MATH
+        phloat i;
+    #else
+        int8 i;
+    #endif
+    int4 j, k;
     int s;
-    if (*x == *x + 1) {
+
+    if (*x == (isg ? *x + 1 : *x - 1)) {
         /* Too big to do anything useful with; this is what the real
          * HP-42S does in this case:
          */
@@ -523,24 +591,27 @@ static int generic_loop_helper(phloat *x, bool isg) {
     } else
         s = 1;
 
-    i = to_int8(t);
-    t = (t - i) * 100000;
-    /* The 0.0000005 is a precaution to prevent the loop increment
-     * value from being taken to be 1 lower than what the user intended;
-     * this can happen because the decimal fractions used here cannot,
-     * in general, be represented exactly in binary, so that what should
-     * be 10.00902 may actually end up being approximated as something
-     * fractionally lower -- and 10.0090199999999+ would be interpreted
-     * as having a loop increment of 1, not the 2 that was intended.
-     * By adding 0.0000005 before truncating, we effectively round to
-     * 7 decimals, which is all that a real HP-42S would have left after
-     * the multiplication by 100000. So, we sacrifice some of the range
-     * of an IEEE-754 double, but maintain HP-42S compatibility.
-     */
-    #ifndef BCD_MATH
+    #ifdef BCD_MATH
+        i = floor(t);
+        t = (t - i) * 100000;
+    #else
+        i = to_int8(t);
+        t = (t - i) * 100000;
+        /* The 0.0000005 is a precaution to prevent the loop increment
+         * value from being taken to be 1 lower than what the user intended;
+         * this can happen because the decimal fractions used here cannot,
+         * in general, be represented exactly in binary, so that what should
+         * be 10.00902 may actually end up being approximated as something
+         * fractionally lower -- and 10.0090199999999+ would be interpreted
+         * as having a loop increment of 1, not the 2 that was intended.
+         * By adding 0.0000005 before truncating, we effectively round to
+         * 7 decimals, which is all that a real HP-42S would have left after
+         * the multiplication by 100000. So, we sacrifice some of the range
+         * of an IEEE-754 double, but maintain HP-42S compatibility.
+         */
         t = t + 0.0000005;
     #endif
-    k = to_int8(t);
+    k = to_int4(t);
     j = k / 100;
     k -= j * 100;
     if (k == 0)
@@ -822,6 +893,8 @@ int docmd_beep(arg_struct *arg) {
 }
 
 int docmd_tone(arg_struct *arg) {
+    if (arg->type == ARGTYPE_STK)
+        return ERR_INVALID_DATA;
     int err;
     int4 num;
     err = arg_to_num(arg, &num);
@@ -1320,7 +1393,7 @@ int docmd_prx(arg_struct *arg) {
     else {
         char buf[100];
         int len;
-        shell_annunciators(-1, -1, 0, -1, -1, -1);
+        shell_annunciators(-1, -1, 1, -1, -1, -1);
         len = vartype2string(reg_x, buf, 100);
         if (reg_x->type == TYPE_REAL || reg_x->type == TYPE_STRING)
             print_right(buf, len, "***", 3);
@@ -1501,7 +1574,8 @@ int docmd_gto(arg_struct *arg) {
     if (!running)
         clear_all_rtns();
 
-    if (arg->type == ARGTYPE_NUM || arg->type == ARGTYPE_LCLBL) {
+    if (arg->type == ARGTYPE_NUM || arg->type == ARGTYPE_STK
+                                 || arg->type == ARGTYPE_LCLBL) {
         if (!running || arg->target == -1)
             arg->target = find_local_label(arg);
         if (arg->target == -2)
@@ -1726,6 +1800,8 @@ int docmd_dim_t(arg_struct *arg) {
     reg_z = reg_y;
     reg_y = new_y;
     reg_x = new_x;
+    if (flags.f.trace_print && flags.f.printer_exists)
+        docmd_prx(NULL);
     return ERR_NONE;
 }
 
@@ -1817,11 +1893,12 @@ int docmd_asgn18(arg_struct *arg) {
 }
 
 int docmd_on(arg_struct *arg) {
-    flags.f.continuous_on = 1;
+    shell_always_on(1);
     return ERR_NONE;
 }
 
 int docmd_off(arg_struct *arg) {
+    shell_always_on(0);
 #ifdef IPHONE
     if (!off_enabled()) {
         squeak();
@@ -1962,8 +2039,10 @@ int docmd_sigma_reg(arg_struct *arg) {
         if (err != ERR_NONE)
             return err;
     }
+    if (arg->type == ARGTYPE_STR)
+        return ERR_ALPHA_DATA_IS_INVALID;
     if (arg->type != ARGTYPE_NUM)
-        return ERR_INTERNAL_ERROR;
+        return ERR_INVALID_DATA;
     mode_sigma_reg = (int4) arg->val.num;
     if (mode_sigma_reg < 0)
         mode_sigma_reg = -mode_sigma_reg;

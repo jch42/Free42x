@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -34,7 +34,7 @@
 #include "shell.h"
 
 #define SOLVE_VERSION 4
-#define INTEG_VERSION 2
+#define INTEG_VERSION 3
 #define NUM_SHADOWS 10
 
 /* Solver */
@@ -93,7 +93,7 @@ typedef struct {
     phloat p;
     phloat t, u;
     phloat prev_int;
-    int evalCount;
+    phloat prev_res;
 } integ_state;
 
 static integ_state integ;
@@ -171,6 +171,8 @@ static void reset_solve() {
     solve.prgm_length = 0;
     solve.active_prgm_length = 0;
     solve.state = 0;
+    if (mode_appmenu == MENU_SOLVE)
+        set_menu_return_err(MENULEVEL_APP, MENU_NONE, true);
 }
 
 static int find_shadow(const char *name, int length) {
@@ -228,6 +230,8 @@ void set_solve_prgm(const char *name, int length) {
 }
 
 static int call_solve_fn(int which, int state) {
+    if (solve.active_prgm_length == 0)
+        return ERR_NONEXISTENT;
     int err, i;
     arg_struct arg;
     vartype *v = recall_var(solve.var_name, solve.var_length);
@@ -438,6 +442,9 @@ int return_to_solve(int failure) {
     }
 
     now_time = shell_milliseconds();
+    if (now_time < solve.last_disp_time)
+        // shell_milliseconds() wrapped around
+        solve.last_disp_time = 0;
     if (!solve.keep_running && solve.state > 1
                                 && now_time >= solve.last_disp_time + 250) {
         /* Put on a show so the user won't think we're just drinking beer
@@ -655,20 +662,27 @@ int return_to_solve(int failure) {
                 }
                 /* The next two 'if' statements deal with the case that the
                  * secant extrapolation returns one of the points we already
-                 * had. We assume this means no improvement is possible (TODO:
-                 * this is not necessarily true; Kahan's 34C article has an
-                 * example of this -- the thing to be careful of is that the
-                 * 'bad' value is so bad that the secant becomes excessively
-                 * steep). We fudge the 'solve' struct a bit to make sure we
-                 * don't return the 'bad' value as the root.
+                 * had. We assume this means no improvement is possible.
+                 * We fudge the 'solve' struct a bit to make sure we don't
+                 * return the 'bad' value as the root.
                  */
                 if (solve.x3 == solve.x1) {
+                    if (fabs(slope) > 1e50) {
+                        // Not improving because slope too steep
+                        solve.x3 = solve.x1 - (solve.x2 - solve.x1) / 100;
+                        return call_solve_fn(3, 4);
+                    }
                     solve.which = 1;
                     solve.curr_f = solve.fx1;
                     solve.prev_x = solve.x2;
                     return finish_solve(SOLVE_ROOT);
                 }
                 if (solve.x3 == solve.x2) {
+                    if (fabs(slope) > 1e50) {
+                        // Not improving because slope too steep
+                        solve.x3 = solve.x2 + (solve.x2 - solve.x1) / 100;
+                        return call_solve_fn(3, 4);
+                    }
                     solve.which = 2;
                     solve.curr_f = solve.fx2;
                     solve.prev_x = solve.x1;
@@ -804,6 +818,8 @@ static void reset_integ() {
     integ.prgm_length = 0;
     integ.active_prgm_length = 0;
     integ.state = 0;
+    if (mode_appmenu == MENU_INTEG || mode_appmenu == MENU_INTEG_PARAMS)
+        set_menu_return_err(MENULEVEL_APP, MENU_NONE, true);
 }
 
 void set_integ_prgm(const char *name, int length) {
@@ -823,6 +839,8 @@ void get_integ_var(char *name, int *length) {
 }
 
 static int call_integ_fn() {
+    if (integ.active_prgm_length == 0)
+        return ERR_NONEXISTENT;
     int err, i;
     arg_struct arg;
     phloat x = integ.u;
@@ -893,7 +911,7 @@ int start_integ(const char *name, int length) {
     integ.state = 1;
     integ.s[0] = 0;
     integ.k = 1;
-    integ.evalCount = 0;
+    integ.prev_res = 0;
 
     integ.keep_running = program_running();
     if (!integ.keep_running) {
@@ -910,10 +928,6 @@ static int finish_integ() {
     vartype *x, *y;
     int saved_trace = flags.f.trace_print;
     integ.state = 0;
-
-#ifdef WINDOWS_DEBUG
-    printout(integ.evalCount, "integ eval count");
-#endif
 
     x = new_real(integ.sum * integ.b * 0.75);
     y = new_real(integ.eps);
@@ -971,7 +985,6 @@ int return_to_integ(int failure) {
         integ.t = 1 - integ.p * integ.p;
         integ.u = integ.p + integ.t * integ.p / 2;
         integ.u = (integ.u * integ.b + integ.b) / 2 + integ.a;
-        ++integ.evalCount;
         return call_integ_fn();
 
     case 2:
@@ -995,15 +1008,15 @@ int return_to_integ(int failure) {
                 dm /= 4;
                 for (i = 0; i < ROMB_K-m; ++i)
                     integ.c[i] = (integ.c[i+1]-integ.c[i]*dm*4)/(1-dm);
-                integ.eps = integ.c[--ns]*dm;
-                integ.sum += integ.eps;
+                integ.sum += integ.c[--ns]*dm;
             }
 
-            integ.eps = fabs(integ.eps);
-            if (integ.eps <= integ.acc*fabs(integ.sum)) {
+            phloat res = integ.sum * integ.b * 0.75;
+            integ.eps = fabs(integ.prev_res - res);
+            integ.prev_res = res;
+            if (integ.eps <= integ.acc * fabs(res))
                 // done!
                 return finish_integ();
-            }
 
             for (i = 0; i < ROMB_K-1; ++i) integ.s[i] = integ.s[i+1];
             integ.k = ROMB_K-1;

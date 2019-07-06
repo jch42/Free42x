@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -306,7 +306,8 @@ typedef union {
         char decimal_point;
         char thousands_separators;
         char stack_lift_disable;
-        char f31; char f32; char f33;
+        char dmy; /* Time Module DMY mode */
+        char f32; char f33;
         char agraph_control1; /* 0 (default): dst = dst | src, 1: dst = src, */
         char agraph_control0; /* 2: dst = dst & ~src, 3: dst = dst ^ src */
         char digits_bit3;
@@ -321,7 +322,7 @@ typedef union {
         char VIRTUAL_solving;
         char VIRTUAL_integrating;
         char VIRTUAL_variable_menu;
-        char alpha_mode;
+        char VIRTUAL_alpha_mode;
         char VIRTUAL_low_battery;
         char message;
         char two_line_message;
@@ -441,7 +442,6 @@ extern int4 mode_sigma_reg;
 extern int mode_goose;
 extern bool mode_time_clktd;
 extern bool mode_time_clk24;
-extern bool mode_time_dmy;
 
 extern phloat entered_number;
 extern int entered_string_length;
@@ -500,7 +500,7 @@ extern arg_struct input_arg;
 extern int baseapp;
 
 /* Random number generator */
-extern phloat random_number;
+extern int8 random_number_low, random_number_high;
 
 /* NORM & TRACE mode: number waiting to be printed */
 extern int deferred_print;

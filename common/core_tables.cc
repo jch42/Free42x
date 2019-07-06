@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -27,36 +27,11 @@
 #include "core_commands7.h"
 
 
-#ifndef COPAN
-#define docmd_openf docmd_xrom
-#define docmd_closef docmd_xrom
-#define docmd_readp docmd_xrom
-#define docmd_writp docmd_xrom
-#define docmd_getxy docmd_xrom
-#define docmd_putxy docmd_xrom
-#define docmd_clrp docmd_xrom
-#define docmd_clrd docmd_xrom
-#define docmd_appd docmd_xrom
-#define docmd_getn docmd_xrom
-#define docmd_putn docmd_xrom
-#define docmd_getz docmd_xrom
-#define docmd_putz docmd_xrom
-#define docmd_delp docmd_xrom
-#endif
-
-#ifndef BIGSTACK
-#define docmd_drop docmd_xrom
-#endif
-
 #if !defined(ANDROID) && !defined(IPHONE)
 #define docmd_accel docmd_xrom
 #define docmd_locat docmd_xrom
 #define docmd_heading docmd_xrom
 #endif
-
-/* PalmOS: even though this array is declared "const", it ends up in the
- * globals area. Is this because of the function pointers?
- */
 
 static const command_spec cmd_array[] =
 {
@@ -377,21 +352,6 @@ static const command_spec cmd_array[] =
     { /* XROM */        "XROM",                 4, docmd_xrom,        0x01000000, ARG_OTHER, FLAG_HIDDEN },
 
     /* Here endeth the original Free42 function table.
-     * There are two extensions to this table out there in the wild today:
-     * Underhill's COPAN extensions for surveyors
-     * (http://www.underhill.ca/Software/Free42/Free42Copan.php),
-     * and Byron Foster's Big Stack in 42s for iPhone
-     * (http://free42iphone.googlecode.com/).
-     * I'm merging both of these extensions into the main source repository --
-     * not the actual implementations, but the function table entries, so that
-     * programs created by these extended versions can be shared more easily.
-     * Note that I had to move Byron's DROP extension from position 315 to
-     * 329 to resolve the clash with the older Underhill extensions.
-     * The function handlers (i.e. the docmd_ functions) are #defined as
-     * docmd_xrom if the appropriate extensions are not present, so executing
-     * them will raise a Nonexistent error, but you will see the function
-     * *names* from this table in the actual program listings, regardless of
-     * whether the extensions are present or not.
      * UPDATE: To support "pure" HP-42S behavior, all extensions can be
      * disabled at runtime, using the core_settings.enable_ext_* flags.
      * When an extension is disabled, its commands disappear from the FCN
@@ -403,24 +363,24 @@ static const command_spec cmd_array[] =
      * to make sure the display reflects the new setting.
      */
 
-    /* Underhill's COPAN */
-    { /* OPENF */       "OPENF",                5, docmd_openf,       0x0000a7c1, ARG_NONE,  FLAG_NONE },
-    { /* CLOSF */       "CLOSF",                5, docmd_closef,      0x0000a7c2, ARG_NONE,  FLAG_NONE },
-    { /* READP */       "READP",                5, docmd_readp,       0x0000a7c3, ARG_NONE,  FLAG_NONE },
-    { /* WRITP */       "WRITP",                5, docmd_writp,       0x0000a7c4, ARG_NONE,  FLAG_NONE },
-    { /* GETXY */       "GETXY",                5, docmd_getxy,       0x0000a7c5, ARG_NONE,  FLAG_NONE },
-    { /* PUTXY */       "PUTXY",                5, docmd_putxy,       0x0000a7c6, ARG_NONE,  FLAG_NONE },
-    { /* CLRP */        "CLRP",                 4, docmd_clrp,        0x0000a7c7, ARG_NONE,  FLAG_NONE },
-    { /* CLRD */        "CLRD",                 4, docmd_clrd,        0x0000a7c8, ARG_NONE,  FLAG_NONE },
-    { /* APPD */        "APPD",                 4, docmd_appd,        0x0000a7c9, ARG_NONE,  FLAG_NONE },
-    { /* GETN */        "GETN",                 4, docmd_getn,        0x0000a7ca, ARG_NONE,  FLAG_NONE },
-    { /* PUTN */        "PUTN",                 4, docmd_putn,        0x0000a7cb, ARG_NONE,  FLAG_NONE },
-    { /* GETZ */        "GETZ",                 4, docmd_getz,        0x0000a7cc, ARG_NONE,  FLAG_NONE },
-    { /* PUTZ */        "PUTZ",                 4, docmd_putz,        0x0000a7cd, ARG_NONE,  FLAG_NONE },
-    { /* DELP */        "DELP",                 4, docmd_delp,        0x0000a7ce, ARG_NONE,  FLAG_NONE },
+    /* Underhill's COPAN (Obsolete) */
+    { /* OPENF */       "OPENF",                5, docmd_xrom,        0x0000a7c1, ARG_NONE,  FLAG_NONE },
+    { /* CLOSF */       "CLOSF",                5, docmd_xrom,        0x0000a7c2, ARG_NONE,  FLAG_NONE },
+    { /* READP */       "READP",                5, docmd_xrom,        0x0000a7c3, ARG_NONE,  FLAG_NONE },
+    { /* WRITP */       "WRITP",                5, docmd_xrom,        0x0000a7c4, ARG_NONE,  FLAG_NONE },
+    { /* GETXY */       "GETXY",                5, docmd_xrom,        0x0000a7c5, ARG_NONE,  FLAG_NONE },
+    { /* PUTXY */       "PUTXY",                5, docmd_xrom,        0x0000a7c6, ARG_NONE,  FLAG_NONE },
+    { /* CLRP */        "CLRP",                 4, docmd_xrom,        0x0000a7c7, ARG_NONE,  FLAG_NONE },
+    { /* CLRD */        "CLRD",                 4, docmd_xrom,        0x0000a7c8, ARG_NONE,  FLAG_NONE },
+    { /* APPD */        "APPD",                 4, docmd_xrom,        0x0000a7c9, ARG_NONE,  FLAG_NONE },
+    { /* GETN */        "GETN",                 4, docmd_xrom,        0x0000a7ca, ARG_NONE,  FLAG_NONE },
+    { /* PUTN */        "PUTN",                 4, docmd_xrom,        0x0000a7cb, ARG_NONE,  FLAG_NONE },
+    { /* GETZ */        "GETZ",                 4, docmd_xrom,        0x0000a7cc, ARG_NONE,  FLAG_NONE },
+    { /* PUTZ */        "PUTZ",                 4, docmd_xrom,        0x0000a7cd, ARG_NONE,  FLAG_NONE },
+    { /* DELP */        "DELP",                 4, docmd_xrom,        0x0000a7ce, ARG_NONE,  FLAG_NONE },
 
-    /* Byron Foster's DROP for Bigstack */
-    { /* DROP */        "DROP",                 4, docmd_drop,        0x0000a271, ARG_NONE,  FLAG_NONE },
+    /* Byron Foster's DROP for Bigstack (Obsolete) */
+    { /* DROP */        "DROP",                 4, docmd_xrom,        0x0000a271, ARG_NONE,  FLAG_NONE },
 
     /* Accelerometer, GPS, and compass support */
     { /* ACCEL */       "ACCEL",                5, docmd_accel,       0x0000a7cf, ARG_NONE,  FLAG_NONE },

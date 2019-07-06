@@ -1,6 +1,6 @@
 ###############################################################################
 # Free42 -- an HP-42S calculator simulator
-# Copyright (C) 2004-2012  Thomas Okken
+# Copyright (C) 2004-2019  Thomas Okken
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License, version 2,
@@ -17,8 +17,8 @@
 
 CFLAGS = -DNO_SINCOS \
 	 -DOLD_PSE \
-	 -arch i386 \
-	 -mmacosx-version-min=10.4 \
+	 -arch x86_64 \
+	 -mmacosx-version-min=10.7 \
 	 -Wall \
          -Wno-parentheses \
 	 -g \
@@ -33,9 +33,9 @@ CXXFLAGS = $(CFLAGS) \
            -fno-exceptions \
 	   -fno-rtti
 
-LDFLAGS = -Wl,-syslibroot,/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.12.sdk \
-          -mmacosx-version-min=10.4
-LIBS = -arch i386 -lm gcc111libbid.a
+LDFLAGS = -Wl,-syslibroot,/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.14.sdk \
+          -mmacosx-version-min=10.7 -stdlib=libc++
+LIBS = -arch x86_64 -lm gcc111libbid.a
 
 SRCS = shell.cc shell_spool.cc \
 	core_main.cc core_commands1.cc core_commands2.cc \
@@ -75,6 +75,7 @@ Free42.wdgt: free42 keymap.txt
 	- mkdir Free42.wdgt/bin
 	cp free42 Free42.wdgt/bin
 	cp Info.plist Free42.wdgt
+	codesign -f -s "Developer ID Application: Thomas Okken (F4D88K2P5W)" Free42.wdgt
 
 free42: $(OBJS)
 	$(CXX) -o free42 $(LDFLAGS) $(OBJS) $(LIBS)

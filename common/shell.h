@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -119,10 +119,7 @@ uint4 shell_get_mem();
 
 /* shell_low_battery()
  * Callback to find out if the battery is low. Used to emulate flag 49 and the
- * battery annunciator, and also taken into account when deciding whether or
- * not to allow a power-down -- so as long as the shell provides a functional
- * implementation of shell_low_battery(), it can leave the decision on how to
- * respond to sysNotifySleepRequestEvent to core_allows_powerdown().
+ * battery annunciator.
  */
 int shell_low_battery();
 
@@ -136,15 +133,11 @@ void shell_powerdown();
 /* shell_random_seed()
  * When SEED is invoked with X = 0, the random number generator should be
  * seeded to a random value; the emulator core calls this function to obtain
- * it. The shell should construct a double in the range [0, 1) in a random
- * manner, using the real-time clock or some other source of randomness.
- * Note that distribution is not very important; the value will only be used to
- * seed the RNG. What's important that using shell_random_seed() guarantees
- * that the RNG will be initialized to a different sequence. This matters for
- * applications like games where you don't want the same sequence of cards
- * dealt each time.
+ * it. The core uses the least significant 14 decimal digits of the provided
+ * value, so using a millisecond-resolution time stamp means SEED won't
+ * repeat itself for more than 3000 years.
  */
-double shell_random_seed();
+int8 shell_random_seed();
 
 /* shell_milliseconds()
  * Returns an elapsed-time value in milliseconds. The caller should make no
@@ -223,6 +216,13 @@ int shell_get_location(double *lat, double *lon, double *lat_lon_acc,
 int shell_get_heading(double *mag_heading, double *true_heading, double *acc,
                                 double *x, double *y, double *z);
 #endif
+
+/* shell_always_on()
+ *
+ * Sets and queries the "always on" state (flag 44). Pass 0 to clear, 1 to set,
+ * or -1 to leave unchanged; returns the previous state.
+ */
+int shell_always_on(int always_on);
 
 /* shell_get_time_date()
  *

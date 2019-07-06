@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -134,9 +134,17 @@ extern "C" double log2(double x);
  * Version 17: 1.4.65 iPhone "OFF enable" flag
  * Version 18: 1.4.79 Replaced BCD20 with Intel's Decimal Floating Point
  *                    Library v.2.1.
+ * Version 19: 1.5.14 Removed mode_time_dmy; now using flag 31 instead.
+ * Version 20: 2.0.3  Removed "raw text" option, ext_copan, and ext_bigstack.
+ * Version 21: 2.0.7  New random number generator.
+ * Version 22: 2.0.17 Fixed bug where local GTO/XEQ targets didn't get cleared
+ *                    when and END was deleted, and potentially (though never
+ *                    reported) also when an END was inserted. Bumping the
+ *                    state version so that older state files get their
+ *                    potentially-incorrect jump targets cleared, just in case.
  */
 #define FREE42_MAGIC 0x466b3432
-#define FREE42_VERSION 18
+#define FREE42_VERSION 22
 
 
 #endif

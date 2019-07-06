@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -214,14 +214,22 @@ Java_com_thomasokken_free42_Free42Activity_core_1powercycle(JNIEnv *env, jobject
     return core_powercycle();
 }
 
-extern "C" jint
-Java_com_thomasokken_free42_Free42Activity_core_1list_1programs(JNIEnv *env, jarray thiz, jbyteArray buf) {
+extern "C" jobjectArray
+Java_com_thomasokken_free42_Free42Activity_core_1list_1programs(JNIEnv *env) {
     Tracer T("core_list_programs");
-    int bufsize = env->GetArrayLength(buf);
-    char *cbuf = (char *) malloc(bufsize);
-    int ret = core_list_programs(cbuf, bufsize);
-    env->SetByteArrayRegion(buf, 0, bufsize, (const jbyte *) cbuf);
-    free(cbuf);
+    char *buf = core_list_programs();
+    jclass stringClass = env->FindClass("java/lang/String");
+    if (buf == NULL)
+        return env->NewObjectArray(0, stringClass, NULL);
+    int count = ((buf[0] & 255) << 24) | ((buf[1] & 255) << 16) | ((buf[2] & 255) << 8) | (buf[3] & 255);
+    jobjectArray ret = env->NewObjectArray(count, stringClass, NULL);
+    char *p = buf + 4;
+    for (int i = 0; i < count; i++) {
+        jstring s = env->NewStringUTF(p);
+        env->SetObjectArrayElement(ret, i, s);
+        p += strlen(p) + 1;
+    }
+    free(buf);
     return ret;
 }
 
@@ -231,29 +239,29 @@ Java_com_thomasokken_free42_Free42Activity_core_1program_1size(JNIEnv *env, jobj
     return core_program_size(prgm_index);
 }
 
-extern "C" jboolean
+extern "C" void
 Java_com_thomasokken_free42_Free42Activity_core_1export_1programs(JNIEnv *env, jobject thiz, jintArray indexes) {
     Tracer T("core_export_programs");
     int count = env->GetArrayLength(indexes);
     int *indexes2 = (int *) malloc(count * sizeof(int));
     env->GetIntArrayRegion(indexes, 0, count, indexes2);
-    jboolean ret = core_export_programs(count, indexes2, NULL);
+    core_export_programs(count, indexes2);
     free(indexes2);
-    return ret;
 }
 
 extern "C" void
 Java_com_thomasokken_free42_Free42Activity_core_1import_1programs(JNIEnv *env, jobject thiz) {
     Tracer T("core_import_programs");
-    core_import_programs(NULL);
+    core_import_programs();
 }
 
 extern "C" jstring
 Java_com_thomasokken_free42_Free42Activity_core_1copy(JNIEnv *env, jobject thiz) {
     Tracer T("core_copy");
-    char buf[100];
-    core_copy(buf, 100);
-    return env->NewStringUTF(buf);
+    char *buf = core_copy();
+    jstring s = env->NewStringUTF(buf);
+    free(buf);
+    return s;
 }
 
 extern "C" void
@@ -272,14 +280,8 @@ Java_com_thomasokken_free42_Free42Activity_getCoreSettings(JNIEnv *env, jobject 
     env->SetBooleanField(settings, fid, core_settings.matrix_singularmatrix);
     fid = env->GetFieldID(klass, "matrix_outofrange", "Z");
     env->SetBooleanField(settings, fid, core_settings.matrix_outofrange);
-    fid = env->GetFieldID(klass, "raw_text", "Z");
-    env->SetBooleanField(settings, fid, core_settings.raw_text);
     fid = env->GetFieldID(klass, "auto_repeat", "Z");
     env->SetBooleanField(settings, fid, core_settings.auto_repeat);
-    fid = env->GetFieldID(klass, "enable_ext_copan", "Z");
-    env->SetBooleanField(settings, fid, core_settings.enable_ext_copan);
-    fid = env->GetFieldID(klass, "enable_ext_bigstack", "Z");
-    env->SetBooleanField(settings, fid, core_settings.enable_ext_bigstack);
     fid = env->GetFieldID(klass, "enable_ext_accel", "Z");
     env->SetBooleanField(settings, fid, core_settings.enable_ext_accel);
     fid = env->GetFieldID(klass, "enable_ext_locat", "Z");
@@ -300,14 +302,8 @@ Java_com_thomasokken_free42_Free42Activity_putCoreSettings(JNIEnv *env, jobject 
     core_settings.matrix_singularmatrix = env->GetBooleanField(settings, fid);
     fid = env->GetFieldID(klass, "matrix_outofrange", "Z");
     core_settings.matrix_outofrange = env->GetBooleanField(settings, fid);
-    fid = env->GetFieldID(klass, "raw_text", "Z");
-    core_settings.raw_text = env->GetBooleanField(settings, fid);
     fid = env->GetFieldID(klass, "auto_repeat", "Z");
     core_settings.auto_repeat = env->GetBooleanField(settings, fid);
-    fid = env->GetFieldID(klass, "enable_ext_copan", "Z");
-    core_settings.enable_ext_copan = env->GetBooleanField(settings, fid);
-    fid = env->GetFieldID(klass, "enable_ext_bigstack", "Z");
-    core_settings.enable_ext_bigstack = env->GetBooleanField(settings, fid);
     fid = env->GetFieldID(klass, "enable_ext_accel", "Z");
     core_settings.enable_ext_accel = env->GetBooleanField(settings, fid);
     fid = env->GetFieldID(klass, "enable_ext_locat", "Z");
@@ -326,6 +322,14 @@ Java_com_thomasokken_free42_Free42Activity_redisplay(JNIEnv *env, jobject thiz) 
     redisplay();
 }
 
+static bool alwaysRepaintFullDisplay = false;
+
+extern "C" void
+Java_com_thomasokken_free42_Free42Activity_setAlwaysRepaintFullDisplay(JNIEnv *env, jobject thiz, jboolean repaintFull) {
+    Tracer T("setAlwaysRepaintFullDisplay");
+    alwaysRepaintFullDisplay = repaintFull;
+}
+
 
 /***************************************************************/
 /* Here followeth the implementation of the shell.h interface. */
@@ -340,6 +344,12 @@ Java_com_thomasokken_free42_Free42Activity_redisplay(JNIEnv *env, jobject thiz) 
 void shell_blitter(const char *bits, int bytesperline, int x, int y,
                          int width, int height) {
     Tracer T("shell_blitter");
+    if (alwaysRepaintFullDisplay) {
+        x = 0;
+        y = 0;
+        width = 131;
+        height = 16;
+    }
     JNIEnv *env = getJniEnv();
     jclass klass = env->GetObjectClass(g_activity);
     jmethodID mid = env->GetMethodID(klass, "shell_blitter", "([BIIIII)V");
@@ -456,15 +466,22 @@ void shell_powerdown() {
     env->DeleteLocalRef(klass);
 }
 
-double shell_random_seed() {
-    Tracer T("shell_random_seed");
+int shell_always_on(int always_on) {
+    Tracer T("shell_always_on");
     JNIEnv *env = getJniEnv();
     jclass klass = env->GetObjectClass(g_activity);
-    jmethodID mid = env->GetMethodID(klass, "shell_random_seed", "()D");
-    double ret = env->CallDoubleMethod(g_activity, mid);
+    jmethodID mid = env->GetMethodID(klass, "shell_always_on", "(I)I");
+    int ret = env->CallIntMethod(g_activity, mid, always_on);
     // Delete local references
     env->DeleteLocalRef(klass);
     return ret;
+}
+
+int8 shell_random_seed() {
+    Tracer T("shell_random_seed");
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
 uint4 shell_milliseconds() {
@@ -633,20 +650,22 @@ void shell_get_time_date(uint4 *time, uint4 *date, int *weekday) {
         *weekday = tms.tm_wday;
 }
 
-void shell_logprintf(const char *format, ...) {
-    va_list ap;
-    va_start(ap, format);
-
+void shell_log(const char *message) {
     JNIEnv *env = getJniEnv();
     jclass klass = env->GetObjectClass(g_activity);
     jmethodID mid = env->GetMethodID(klass, "shell_log", "(Ljava/lang/String;)V");
-    char buf[1000];
-    vsprintf(buf, format, ap);
-    jstring s = env->NewStringUTF(buf);
+    jstring s = env->NewStringUTF(message);
     env->CallVoidMethod(g_activity, mid, s);
     // Delete local references
     env->DeleteLocalRef(klass);
     env->DeleteLocalRef(s);
+}
 
+void shell_logprintf(const char *format, ...) {
+    va_list ap;
+    va_start(ap, format);
+    char buf[1000];
+    vsprintf(buf, format, ap);
+    shell_log(buf);
     va_end(ap);
 }

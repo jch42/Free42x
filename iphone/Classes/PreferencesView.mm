@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -20,6 +20,8 @@
 #import "SelectFileView.h"
 #import "RootViewController.h"
 #import "core_main.h"
+#import "shell.h"
+#import "shell_skin_iphone.h"
 
 @implementation PreferencesView
 
@@ -27,13 +29,16 @@
 @synthesize singularMatrixSwitch;
 @synthesize matrixOutOfRangeSwitch;
 @synthesize autoRepeatSwitch;
+@synthesize alwaysOnSwitch;
+@synthesize keyClicksSwitch;
+@synthesize hapticFeedbackSwitch;
+@synthesize orientationSelector;
+@synthesize maintainSkinAspectSwitch;
 @synthesize printToTextSwitch;
 @synthesize printToTextField;
-@synthesize rawTextSwitch;
 @synthesize printToGifSwitch;
 @synthesize printToGifField;
 @synthesize maxGifLengthField;
-@synthesize popupKeyboardSwitch;
 @synthesize scrollView;
 @synthesize contentView;
 
@@ -53,13 +58,16 @@
     [singularMatrixSwitch setOn:core_settings.matrix_singularmatrix];
     [matrixOutOfRangeSwitch setOn:core_settings.matrix_outofrange];
     [autoRepeatSwitch setOn:core_settings.auto_repeat];
+    [alwaysOnSwitch setOn:shell_always_on(-1)];
+    [keyClicksSwitch setOn:state.keyClicks != 0];
+    [hapticFeedbackSwitch setOn:state.hapticFeedback != 0];
+    [orientationSelector setSelectedSegmentIndex:state.orientationMode];
+    [maintainSkinAspectSwitch setOn:state.maintainSkinAspect[[CalcView isPortrait] ? 0 : 1] != 0];
     [printToTextSwitch setOn:(state.printerToTxtFile != 0)];
     [printToTextField setText:[NSString stringWithCString:state.printerTxtFileName encoding:NSUTF8StringEncoding]];
-    [rawTextSwitch setOn:core_settings.raw_text];
     [printToGifSwitch setOn:(state.printerToGifFile != 0)];
     [printToGifField setText:[NSString stringWithCString:state.printerGifFileName encoding:NSUTF8StringEncoding]];
     [maxGifLengthField setText:[NSString stringWithFormat:@"%d", state.printerGifMaxLength]];
-    [popupKeyboardSwitch setOn:(state.popupKeyboard != 0)];
     
     // watch the keyboard so we can adjust the user interface if necessary.
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(keyboardDidShow:) name:UIKeyboardDidShowNotification object:nil];
@@ -145,13 +153,25 @@
     core_settings.matrix_singularmatrix = singularMatrixSwitch.on;
     core_settings.matrix_outofrange = matrixOutOfRangeSwitch.on;
     core_settings.auto_repeat = autoRepeatSwitch.on;
+    shell_always_on(alwaysOnSwitch.on);
+    state.keyClicks = keyClicksSwitch.on;
+    state.hapticFeedback = hapticFeedbackSwitch.on;
+    state.orientationMode = (int) orientationSelector.selectedSegmentIndex;
+    int isPortrait = [CalcView isPortrait] ? 0 : 1;
+    int maintainSkinAspect = maintainSkinAspectSwitch.on ? 1 : 0;
+    if (maintainSkinAspect != state.maintainSkinAspect[isPortrait]) {
+        state.maintainSkinAspect[isPortrait] = maintainSkinAspect;
+        long w, h;
+        skin_load(&w, &h);
+        core_repaint_display();
+        [CalcView repaint];
+    }
     state.printerToTxtFile = printToTextSwitch.on;
     NSString *s = [printToTextField text];
     if ([s length] > 0 && ![[s lowercaseString] hasSuffix:@".txt"])
         s = [s stringByAppendingString:@".txt"];
     strcpy(buf, state.printerTxtFileName);
     [s getCString:state.printerTxtFileName maxLength:FILENAMELEN encoding:NSUTF8StringEncoding];
-    core_settings.raw_text = rawTextSwitch.on;
     if (!state.printerToTxtFile || strcmp(buf, state.printerTxtFileName) != 0)
         [CalcView stopTextPrinting];
     state.printerToGifFile = printToGifSwitch.on;
@@ -164,15 +184,14 @@
     char numbuf[32];
     [s getCString:numbuf maxLength:32 encoding:NSUTF8StringEncoding];
     if (sscanf(numbuf, "%d", &state.printerGifMaxLength) == 1) {
-        if (state.printerGifMaxLength < 32)
-            state.printerGifMaxLength = 32;
+        if (state.printerGifMaxLength < 16)
+            state.printerGifMaxLength = 16;
         else if (state.printerGifMaxLength > 32767)
             state.printerGifMaxLength = 32767;
     } else
         state.printerGifMaxLength = 256;
     if (!state.printerToGifFile || strcmp(buf, state.printerGifFileName) != 0)
         [CalcView stopGifPrinting];
-    state.popupKeyboard = popupKeyboardSwitch.on;
     [RootViewController showMain];
 }
 

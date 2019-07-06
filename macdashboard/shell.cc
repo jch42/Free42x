@@ -2,7 +2,7 @@
  * Use this (or as a template) for simple Model View Control implementations
  * 
  * Copyright (c) 2005 D.Jeff Dionne
- * Copyright (c) 2004-2012  Thomas Okken
+ * Copyright (c) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -134,8 +134,6 @@ static void gif_seeker(int pos) {
 void shell_blitter(const char *bits, int bytesperline, int x, int y,
 			     int width, int height)
 {
-    char buf[64];
-
     gif_file = fopen("display.gif", "w");
     shell_start_gif(gif_writer, 131, 16);
     shell_spool_gif(bits, bytesperline, 0, 0, 131, 16, gif_writer);
@@ -145,9 +143,10 @@ void shell_blitter(const char *bits, int bytesperline, int x, int y,
     printf("d");
     flush();
 
-    core_copy(buf, sizeof(buf));
+    char *buf = core_copy();
     printf("x%s", buf);
     flush();
+    free(buf);
 }
 
 void shell_beeper(int frequency, int duration)
@@ -248,10 +247,10 @@ void shell_powerdown() {
     quit_flag = 1;
 }
 
-double shell_random_seed() {
+int8 shell_random_seed() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    return ((tv.tv_sec * 1000000L + tv.tv_usec) & 0xffffffffL) / 4294967296.0;
+    return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
 uint4 shell_milliseconds() {
@@ -519,7 +518,7 @@ sighand(int)
 int
 main(int argc, char *argv[])
 {
-    char cmd[256];
+    char cmd[65536];
     unsigned char *macro;
     int keyno, ctrl, alt, shift;
     int repeat;
@@ -622,7 +621,15 @@ main(int argc, char *argv[])
 	    done:
 	    break;
 	case 'P':
-	    core_paste(cmd + 1);
+            char c;
+            char *p;
+            for (p = cmd + 1; (c = *p) != 0; p++) {
+                if (c == 31)
+                    *p = 13;
+                else if (c == 30)
+                    *p = 10;
+            }
+            core_paste(cmd + 1);
 	    redisplay();
 	    break;
 	case 'e':

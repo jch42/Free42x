@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -33,13 +33,19 @@ struct hp_string {
 #define phloat_text(x) (((hp_string *) &(x))->text)
 #define phloat_length(x) (((hp_string *) &(x))->length)
 
+#ifdef BCD_MATH
+#define MAX_MANT_DIGITS 34
+#else
+#define MAX_MANT_DIGITS 16
+#endif
+
 
 #ifndef BCD_MATH
 
 
 #define phloat double
 
-#define p_isinf isinf
+#define p_isinf(x) (isinf(x) ? (x) > 0 ? 1 : -1 : 0)
 #define p_isnan isnan
 #define to_digit(x) ((int) fmod((x), 10.0))
 #define to_char(x) ((char) (x))
@@ -67,6 +73,7 @@ class Phloat {
         Phloat(const BID_UINT128 &b) : val(b) {}
         Phloat(const char *str);
         Phloat(int numer, int denom);
+        Phloat(int8 numer, int8 denom);
         Phloat(int i);
         Phloat(int8 i);
         Phloat(double d);
@@ -151,7 +158,6 @@ bool operator==(int4 x, Phloat y);
 
 extern Phloat PI;
 
-BID_UINT128 double_to_12_digit_decimal(double d);
 void update_decimal(BID_UINT128 *val);
 
 
@@ -162,11 +168,12 @@ extern phloat POS_HUGE_PHLOAT;
 extern phloat NEG_HUGE_PHLOAT;
 extern phloat POS_TINY_PHLOAT;
 extern phloat NEG_TINY_PHLOAT;
+extern phloat NAN_PHLOAT;
 
 void phloat_init();
 int phloat2string(phloat d, char *buf, int buflen,
                   int base_mode, int digits, int dispmode,
-                  int thousandssep);
+                  int thousandssep, int max_mant_digits = 12);
 int string2phloat(const char *buf, int buflen, phloat *d);
 
 

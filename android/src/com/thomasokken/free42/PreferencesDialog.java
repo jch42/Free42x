@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -63,15 +63,17 @@ public class PreferencesDialog extends Dialog {
     private CheckBox singularMatrixCB;
     private CheckBox matrixOutOfRangeCB;
     private CheckBox autoRepeatCB;
+    private CheckBox alwaysOnCB;
     private CheckBox keyClicksCB;
     private CheckBox keyVibrationCB;
     private Spinner orientationSP;
     private Spinner styleSP;
+    private CheckBox maintainSkinAspectCB;
     private CheckBox skinSmoothingCB;
     private CheckBox displaySmoothingCB;
+    private CheckBox displayFullRepaintCB;
     private CheckBox printToTextCB;
     private EditText printToTextFileNameTF;
-    private CheckBox rawTextCB;
     private CheckBox printToGifCB;
     private EditText printToGifFileNameTF;
     private EditText maxGifHeightTF;
@@ -83,6 +85,7 @@ public class PreferencesDialog extends Dialog {
         singularMatrixCB = (CheckBox) findViewById(R.id.singularMatrixCB);
         matrixOutOfRangeCB = (CheckBox) findViewById(R.id.matrixOutOfRangeCB);
         autoRepeatCB = (CheckBox) findViewById(R.id.autoRepeatCB);
+        alwaysOnCB = (CheckBox) findViewById(R.id.alwaysOnCB);
         keyClicksCB = (CheckBox) findViewById(R.id.keyClicksCB);
         keyVibrationCB = (CheckBox) findViewById(R.id.keyVibrationCB);
         orientationSP = (Spinner) findViewById(R.id.orientationSpinner);
@@ -100,8 +103,10 @@ public class PreferencesDialog extends Dialog {
             values = new String[] { "Normal", "No Status" };
         aa = new ArrayAdapter<String>(context, android.R.layout.simple_spinner_item, values);
         styleSP.setAdapter(aa);
+        maintainSkinAspectCB = (CheckBox) findViewById(R.id.maintainSkinAspectCB);
         skinSmoothingCB = (CheckBox) findViewById(R.id.skinSmoothingCB);
         displaySmoothingCB = (CheckBox) findViewById(R.id.displaySmoothingCB);
+        displayFullRepaintCB = (CheckBox) findViewById(R.id.displayFullRepaintCB);
         printToTextCB = (CheckBox) findViewById(R.id.printToTextCB);
         Button browseTextB = (Button) findViewById(R.id.browseTextB);
         browseTextB.setOnClickListener(new View.OnClickListener() {
@@ -110,7 +115,6 @@ public class PreferencesDialog extends Dialog {
             }
         });
         printToTextFileNameTF = (EditText) findViewById(R.id.printToTextFileNameTF);
-        rawTextCB = (CheckBox) findViewById(R.id.rawTextCB);
         printToGifCB = (CheckBox) findViewById(R.id.printToGifCB);
         Button browseGifB = (Button) findViewById(R.id.browseGifB);
         browseGifB.setOnClickListener(new View.OnClickListener() {
@@ -146,6 +150,8 @@ public class PreferencesDialog extends Dialog {
     }
     
     private void browseTextFileName(Context context) {
+        if (!Free42Activity.checkStorageAccess())
+            return;
         FileSelectionDialog fsd = new FileSelectionDialog(context, new String[] { "txt", "*" });
         fsd.setPath(printToTextFileNameTF.getText().toString());
         fsd.setOkListener(new FileSelectionDialog.OkListener() {
@@ -157,6 +163,8 @@ public class PreferencesDialog extends Dialog {
     }
     
     private void browseGifFileName(Context context) {
+        if (!Free42Activity.checkStorageAccess())
+            return;
         FileSelectionDialog fsd = new FileSelectionDialog(context, new String[] { "gif", "*" });
         fsd.setPath(printToGifFileNameTF.getText().toString());
         fsd.setOkListener(new FileSelectionDialog.OkListener() {
@@ -189,6 +197,14 @@ public class PreferencesDialog extends Dialog {
     
     public boolean getAutoRepeat() {
         return autoRepeatCB.isChecked();
+    }
+    
+    public void setAlwaysOn(boolean b) {
+        alwaysOnCB.setChecked(b);
+    }
+    
+    public boolean getAlwaysOn() {
+        return alwaysOnCB.isChecked();
     }
     
     public void setKeyClicks(boolean b) {
@@ -255,6 +271,14 @@ public class PreferencesDialog extends Dialog {
         return styleSP.getSelectedItemPosition();
     }
     
+    public void setMaintainSkinAspect(boolean b) {
+        maintainSkinAspectCB.setChecked(b);
+    }
+    
+    public boolean getMaintainSkinAspect() {
+        return maintainSkinAspectCB.isChecked();
+    }
+    
     public void setSkinSmoothing(boolean b) {
         skinSmoothingCB.setChecked(b);
     }
@@ -271,6 +295,14 @@ public class PreferencesDialog extends Dialog {
         return displaySmoothingCB.isChecked();
     }
     
+    public void setDisplayFullRepaint(boolean b) {
+        displayFullRepaintCB.setChecked(b);
+    }
+    
+    public boolean getDisplayFullRepaint() {
+        return displayFullRepaintCB.isChecked();
+    }
+    
     public void setPrintToText(boolean b) {
         printToTextCB.setChecked(b);
     }
@@ -285,14 +317,6 @@ public class PreferencesDialog extends Dialog {
     
     public String getPrintToTextFileName() {
         return printToTextFileNameTF.getText().toString();
-    }
-    
-    public void setRawText(boolean b) {
-        rawTextCB.setChecked(b);
-    }
-    
-    public boolean getRawText() {
-        return rawTextCB.isChecked();
     }
     
     public void setPrintToGif(boolean b) {
@@ -318,8 +342,8 @@ public class PreferencesDialog extends Dialog {
     public int getMaxGifHeight() {
         try {
             int n = Integer.parseInt(maxGifHeightTF.getText().toString());
-            if (n < 32)
-                n = 32;
+            if (n < 16)
+                n = 16;
             else if (n > 32767)
                 n = 32767;
             return n;

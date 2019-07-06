@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -195,32 +195,6 @@ bool core_timeout3(int repaint);
  */
 int core_keyup();
 
-/* core_allows_powerdown()
- *
- * The shell can call this function to find out if the emulator core does not
- * mind if the system powers off. This is only really useful on systems where
- * free42 can actually control the power, and where it makes sense to do so --
- * meaning battery-powered, single-tasking environments. In other words,
- * PalmOS. On other platforms, the shell does not control power (Unix), or
- * refrains from exercising that control (Windows, where user-level
- * applications can shut down the PC, but usually shouldn't); shells in those
- * environments have no use for this function and will never call it.
- * This function should return 'true' if a program is running and/or if flag 44
- * (continuous_on) is set -- but not if flag 49 (low_battery) is set.
- * The emulator should not assume that a power-down will actually take place if
- * this function gets called, as other applications could veto the power-down
- * after we have already agreed to it. Any actions that a real HP-42S performs
- * at power-down (I can't think of anything except stop program execution)
- * should be done in response to the power cycle notifier core_powercycle(),
- * immediately followed by HP-42S power-up activities (again, not much comes to
- * mind, except resuming program execution if flag 11 was set, clearing flags
- * 11 and 44, and maybe some other flag stuff).
- * If the core vetoes a power-down but then wants the CPU immediately, i.e. if
- * it was waiting in GETKEY and now wants program execution to resume, it
- * should set *want_cpu to 1; otherwise it should set it to 0.
- */
-int core_allows_powerdown(int *want_cpu);
-
 /* core_powercycle()
  *
  * This tells the core to pretend that a power cycle has just taken place.
@@ -250,9 +224,14 @@ int core_powercycle();
  * global labels are given the name END (or .END.).
  * The indexes into the list of program names should be used to identify
  * programs to core_export_programs().
- * The function returns the number of items in the list, which is always >= 1.
+ * The function returns a dynamically allocated buffer. The first four bytes
+ * are the number of programs returned (as a big-endian int) which is
+ * guaranteed to always be at least 1. This is followed by a sequence of
+ * 'program_count' null-terminated strings.
+ * This function will return NULL if it fails to allocate the buffer.
+ * The caller should free() the buffer once it is finished using it.
  */
-int core_list_programs(char *buf, int bufsize);
+char *core_list_programs();
 
 /* core_program_size()
  * This function returns the size of a program, specified by its index.
@@ -274,36 +253,23 @@ int4 core_program_size(int prgm_index);
  * The 'count' parameter indicates how many programs are to be exported; the
  * 'indexes' parameter is an array of program indexes. The core will pass the
  * raw file data to the shell using the shell_write() function.
- * The 'progress_report' parameter is an optional callback that will be invoked
- * to report when each program was written. If the callback returns zero, the
- * export will abort.
- * The function returns 0 on success, and 1 if it was aborted by the
- * progress_report callback (i.e., by the user clicking "Cancel" in the
- * progress dialog); in the latter case, the shell should delete the unfinished
- * file. Shells that pass NULL for 'progress_report' can ignore the return
- * value, since it will always be 0.
  */
-int core_export_programs(int count, const int *indexes,
-                         int (*progress_report)(const char *));
+void core_export_programs(int count, const int *indexes);
 
 /* core_import_programs()
  *
  * This function is called by the shell after the user has selected a file to
  * import. The core will read the file data using the shell_read() function.
- * The parameter is a pointer to a function that will be called to deliver
- * progress reports: when importing HP-42S program files, it will be called
- * for each global label and each END encountered; when importing Free42
- * program files, it will be called to report the number of programs loaded.
- * If the callback returns zero, the import will abort.
  */
-void core_import_programs(int (*progress_report)(const char *));
+void core_import_programs();
 
 /* core_copy()
  *
  * Returns a string representation of the contents of the X register.
  * Used by the shell to implement the Copy command.
+ * The caller should free the returned text using free(3).
  */
-void core_copy(char *buf, int buflen);
+char *core_copy();
 
 /* core_paste()
  *
@@ -323,10 +289,7 @@ void core_paste(const char *s);
 typedef struct {
     bool matrix_singularmatrix;
     bool matrix_outofrange;
-    bool raw_text;
     bool auto_repeat;
-    bool enable_ext_copan;
-    bool enable_ext_bigstack;
     bool enable_ext_accel;
     bool enable_ext_locat;
     bool enable_ext_heading;
@@ -356,7 +319,7 @@ bool program_running();
 
 int want_to_run_again();
 void do_interactive(int command);
-int find_builtin(const char *name, int namelen);
+int find_builtin(const char *name, int namelen, bool strict);
 
 void sst();
 void bst();

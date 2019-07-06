@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -16,6 +16,7 @@
  *****************************************************************************/
 
 #import <AudioToolbox/AudioServices.h>
+#import <IOKit/ps/IOPowerSources.h>
 #import <sys/stat.h>
 #import <sys/time.h>
 #import <pthread.h>
@@ -28,6 +29,8 @@
 #import "Free42AppDelegate.h"
 #import "ProgramListDataSource.h"
 #import "CalcView.h"
+#import "FileOpenPanel.h"
+#import "FileSavePanel.h"
 #import "PrintView.h"
 
 
@@ -73,9 +76,11 @@ static int ann_updown = 0;
 static int ann_shift = 0;
 static int ann_print = 0;
 static int ann_run = 0;
-//static int ann_battery = 0;
+static int ann_battery = 0;
 static int ann_g = 0;
 static int ann_rad = 0;
+static pthread_mutex_t ann_print_timeout_mutex = PTHREAD_MUTEX_INITIALIZER;
+static bool ann_print_timeout_active = false;
 
 unsigned char *print_bitmap;
 int printout_top;
@@ -212,6 +217,10 @@ static bool is_file(const char *name);
         print_bitmap[n] = 0;
 }
 
+static void low_battery_checker(CFRunLoopTimerRef timer, void *info) {
+    shell_low_battery();
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     
     /***********************************************************/
@@ -282,6 +291,9 @@ static bool is_file(const char *name);
     }
     if (core_powercycle())
         [self startRunner];
+    
+    CFRunLoopTimerRef lowBatTimer = CFRunLoopTimerCreate(NULL, CFAbsoluteTimeGetCurrent(), 60, 0, 0, low_battery_checker, NULL);
+    CFRunLoopAddTimer(CFRunLoopGetCurrent(), lowBatTimer, kCFRunLoopCommonModes);
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
@@ -378,7 +390,7 @@ static bool is_file(const char *name);
 - (IBAction) showAbout:(id)sender {
     const char *version = [Free42AppDelegate getVersion];
     [aboutVersion setStringValue:[NSString stringWithFormat:@"Free42 %s", version]];
-    [aboutCopyright setStringValue:@"© 2004-2016 Thomas Okken"];
+    [aboutCopyright setStringValue:@"© 2004-2019 Thomas Okken"];
     [NSApp runModalForWindow:aboutWindow];
 }
 
@@ -388,7 +400,6 @@ static bool is_file(const char *name);
     [prefsAutoRepeat setState:core_settings.auto_repeat];
     [prefsPrintText setState:state.printerToTxtFile];
     [prefsPrintTextFile setStringValue:[NSString stringWithCString:state.printerTxtFileName encoding:NSUTF8StringEncoding]];
-    [prefsPrintTextRaw setState:core_settings.raw_text];
     [prefsPrintGIF setState:state.printerToGifFile];
     [prefsPrintGIFFile setStringValue:[NSString stringWithCString:state.printerGifFileName encoding:NSUTF8StringEncoding]];
     [prefsPrintGIFMaxHeight setStringValue:[NSString stringWithFormat:@"%d", state.printerGifMaxLength]];
@@ -410,7 +421,6 @@ static bool is_file(const char *name);
         print_txt = NULL;
     }
     strcpy(state.printerTxtFileName, buf);
-    core_settings.raw_text = [prefsPrintTextRaw state];
     state.printerToGifFile = [prefsPrintGIF state];
     [[prefsPrintGIFFile stringValue] getCString:buf maxLength:FILENAMELEN encoding:NSUTF8StringEncoding];
     len = strlen(buf);
@@ -420,12 +430,13 @@ static bool is_file(const char *name);
         shell_finish_gif(gif_seeker, gif_writer);
         fclose(print_gif);
         print_gif = NULL;
+        gif_seq = -1;
     }
     strcpy(state.printerGifFileName, buf);
     [[prefsPrintGIFMaxHeight stringValue] getCString:buf maxLength:50 encoding:NSUTF8StringEncoding];
     if (sscanf(buf, "%d", &state.printerGifMaxLength) == 1) {
-        if (state.printerGifMaxLength < 32)
-            state.printerGifMaxLength = 32;
+        if (state.printerGifMaxLength < 16)
+            state.printerGifMaxLength = 16;
         else if (state.printerGifMaxLength > 32767)
             state.printerGifMaxLength = 32767;
     } else
@@ -433,15 +444,15 @@ static bool is_file(const char *name);
 }
 
 - (IBAction) browsePrintTextFile:(id)sender {
-    NSSavePanel *saveDlg = [NSSavePanel savePanel];
-    if ([saveDlg runModalForDirectory:nil file:nil] == NSOKButton)
-        [prefsPrintTextFile setStringValue:[saveDlg filename]];
+    FileSavePanel *saveDlg = [FileSavePanel panelWithTitle:@"Select Text File Name" types:@"Text;txt;All Files;*"];
+    if ([saveDlg runModal] == NSOKButton)
+        [prefsPrintTextFile setStringValue:[saveDlg path]];
 }
 
 - (IBAction) browsePrintGIFFile:(id)sender {
-    NSSavePanel *saveDlg = [NSSavePanel savePanel];
-    if ([saveDlg runModalForDirectory:nil file:nil] == NSOKButton)
-        [prefsPrintGIFFile setStringValue:[saveDlg filename]];
+    FileSavePanel *saveDlg = [FileSavePanel panelWithTitle:@"Select GIF File Name" types:@"GIF;gif;All Files;*"];
+    if ([saveDlg runModal] == NSOKButton)
+        [prefsPrintGIFFile setStringValue:[saveDlg path]];
 }
 
 - (IBAction) showPrintOut:(id)sender {
@@ -458,13 +469,11 @@ static bool is_file(const char *name);
 }
 
 - (IBAction) importPrograms:(id)sender {
-    NSOpenPanel* openDlg = [NSOpenPanel openPanel];
-    [openDlg setCanChooseFiles:YES];
-    [openDlg setCanChooseDirectories:NO];
-    if ([openDlg runModalForDirectory:nil file:nil] == NSOKButton) {
-        NSArray* files = [openDlg filenames];
-        for (int i = 0; i < [files count]; i++) {
-            NSString* fileName = [files objectAtIndex:i];
+    FileOpenPanel *openDlg = [FileOpenPanel panelWithTitle:@"Import Programs" types:@"Program Files;raw;All Files;*"];
+    if ([openDlg runModal] == NSOKButton) {
+        NSArray* paths = [openDlg paths];
+        for (int i = 0; i < [paths count]; i++) {
+            NSString* fileName = [paths objectAtIndex:i];
             char cFileName[1024];
             [fileName getCString:cFileName maxLength:1024 encoding:NSUTF8StringEncoding];
             import_file = fopen(cFileName, "r");
@@ -475,7 +484,7 @@ static bool is_file(const char *name);
                          cFileName, strerror(err), err);
                 show_message("Message", buf);
             } else {
-                core_import_programs(NULL);
+                core_import_programs();
                 redisplay();
                 if (import_file != NULL) {
                     fclose(import_file);
@@ -487,9 +496,9 @@ static bool is_file(const char *name);
 }
 
 - (IBAction) exportPrograms:(id)sender {
-    char buf[10000];
-    int count = core_list_programs(buf, 10000);
-    [programListDataSource setProgramNames:buf count:count];
+    char *buf = core_list_programs();
+    [programListDataSource setProgramNames:buf];
+    free(buf);
     [programListView reloadData];
     [NSApp runModalForWindow:selectProgramsWindow];
 }
@@ -504,9 +513,17 @@ static bool is_file(const char *name);
     [selectProgramsWindow orderOut:self];
     bool *selection = [programListDataSource getSelection];
     int count = [programListDataSource numberOfRowsInTableView:nil];
-    NSSavePanel *saveDlg = [NSSavePanel savePanel];
-    if ([saveDlg runModalForDirectory:nil file:nil] == NSOKButton) {
-        NSString *fileName = [saveDlg filename];
+    bool nothing = true;
+    for (int i = 0; i < count; i++)
+        if (selection[i]) {
+            nothing = false;
+            break;
+        }
+    if (nothing)
+        return;
+    FileSavePanel *saveDlg = [FileSavePanel panelWithTitle:@"Export Programs" types:@"Program Files;raw;All Files;*"];
+    if ([saveDlg runModal] == NSOKButton) {
+        NSString *fileName = [saveDlg path];
         char cFileName[1024];
         [fileName getCString:cFileName maxLength:1024 encoding:NSUTF8StringEncoding];
         export_file = fopen(cFileName, "w");
@@ -522,7 +539,7 @@ static bool is_file(const char *name);
             for (int i = 0; i < count; i++)
                 if (selection[i])
                     indexes[selectionSize++] = i;
-            core_export_programs(selectionSize, indexes, NULL);
+            core_export_programs(selectionSize, indexes);
             free(indexes);
             if (export_file != NULL) {
                 fclose(export_file);
@@ -536,10 +553,10 @@ static bool is_file(const char *name);
     NSPasteboard *pb = [NSPasteboard generalPasteboard];
     NSArray *types = [NSArray arrayWithObjects: NSStringPboardType, nil];
     [pb declareTypes:types owner:self];
-    char buf[100];
-    core_copy(buf, 100);
-    NSString *txt = [NSString stringWithCString:buf encoding:NSUTF8StringEncoding];
+    char *buf = core_copy();
+    NSString *txt = [NSString stringWithUTF8String:buf];
     [pb setString:txt forType:NSStringPboardType];
+    free(buf);
 }
 
 - (IBAction) doPaste:(id)sender {
@@ -548,10 +565,8 @@ static bool is_file(const char *name);
     NSString *bestType = [pb availableTypeFromArray:types];
     if (bestType != nil) {
         NSString *txt = [pb stringForType:NSStringPboardType];
-        char buf[100];
-        [txt getCString:buf maxLength:100 encoding:NSUTF8StringEncoding];
+        const char *buf = [txt UTF8String];
         core_paste(buf);
-        redisplay();
     }
 }
 
@@ -710,6 +725,34 @@ static int timeout3_delay;
     pthread_mutex_unlock(&shell_helper_mutex);
 }
 
+- (void) turn_off_print_ann {
+    pthread_mutex_lock(&ann_print_timeout_mutex);
+    ann_print = 0;
+    skin_update_annunciator(3, 0);
+    ann_print_timeout_active = FALSE;
+    pthread_mutex_unlock(&ann_print_timeout_mutex);
+}
+
+- (void) print_ann_helper:(NSNumber *)set {
+    int prt = [set intValue];
+    [set release];
+    pthread_mutex_lock(&ann_print_timeout_mutex);
+    if (ann_print_timeout_active) {
+        [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(turn_off_print_ann) object:NULL];
+        ann_print_timeout_active = FALSE;
+    }
+    if (ann_print != prt) {
+        if (prt) {
+            ann_print = 1;
+            skin_update_annunciator(3, ann_print);
+        } else {
+            [self performSelector:@selector(turn_off_print_ann) withObject:NULL afterDelay:1];
+            ann_print_timeout_active = TRUE;
+        }
+    }
+    pthread_mutex_unlock(&ann_print_timeout_mutex);
+}
+
 @end
 
 static void shell_keydown() {
@@ -831,7 +874,7 @@ void calc_keydown(NSString *characters, NSUInteger flags, unsigned short keycode
     
     bool ctrl = (flags & NSControlKeyMask) != 0;
     bool alt = (flags & NSAlternateKeyMask) != 0;
-    bool shift = (flags & (NSShiftKeyMask | NSAlphaShiftKeyMask)) != 0;
+    bool shift = (flags & NSShiftKeyMask) != 0;
     bool cshift = ann_shift != 0;
     
     if (ckey != 0) {
@@ -974,10 +1017,10 @@ static void show_message(const char *title, const char *message) {
     fprintf(stderr, "%s\n", message);
 }
 
-double shell_random_seed() {
+int8 shell_random_seed() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    return ((tv.tv_sec * 1000000L + tv.tv_usec) & 0xffffffffL) / 4294967296.0;
+    return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 }
 
 void shell_beeper(int frequency, int duration) {
@@ -994,8 +1037,12 @@ void shell_beeper(int frequency, int duration) {
 }
 
 int shell_low_battery() {
-    // TODO!
-    return 0;
+    int lowbat = IOPSGetBatteryWarningLevel() != kIOPSLowBatteryWarningNone;
+    if (ann_battery != lowbat) {
+        ann_battery = lowbat;
+        skin_update_annunciator(5, ann_battery);
+     }
+    return lowbat;
 }
 
 uint4 shell_milliseconds() {
@@ -1048,9 +1095,9 @@ void shell_annunciators(int updn, int shf, int prt, int run, int g, int rad) {
         ann_shift = shf;
         skin_update_annunciator(2, ann_shift);
     }
-    if (prt != -1 && ann_print != prt) {
-        ann_print = prt;
-        skin_update_annunciator(3, ann_print);
+    if (prt != -1) {
+        NSNumber *n = [[NSNumber numberWithInt:prt] retain];
+        [instance performSelectorOnMainThread:@selector(print_ann_helper:) withObject:n waitUntilDone:NO];
     }
     if (run != -1 && ann_run != run) {
         ann_run = run;
@@ -1135,7 +1182,7 @@ void shell_print(const char *text, int length,
         char buf[1000];
         
         if (print_gif != NULL
-            && gif_lines + height > state.printerGifMaxLength) {
+                && gif_lines + height > state.printerGifMaxLength) {
             shell_finish_gif(gif_seeker, gif_writer);
             fclose(print_gif);
             print_gif = NULL;
@@ -1193,7 +1240,13 @@ void shell_print(const char *text, int length,
         
         shell_spool_gif(bits, bytesperline, x, y, width, height, gif_writer);
         gif_lines += height;
-    done_print_gif:;
+
+        if (print_gif != NULL && gif_lines + 9 > state.printerGifMaxLength) {
+            shell_finish_gif(gif_seeker, gif_writer);
+            fclose(print_gif);
+            print_gif = NULL;
+        }
+        done_print_gif:;
     }
 }
 

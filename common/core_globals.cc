@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -591,7 +591,6 @@ int4 mode_sigma_reg;
 int mode_goose;
 bool mode_time_clktd;
 bool mode_time_clk24;
-bool mode_time_dmy;
 
 phloat entered_number;
 int entered_string_length;
@@ -637,7 +636,7 @@ arg_struct input_arg;
 int baseapp = 0;
 
 /* Random number generator */
-phloat random_number;
+int8 random_number_low, random_number_high;
 
 /* NORM & TRACE mode: number waiting to be printed */
 int deferred_print = 0;
@@ -707,14 +706,11 @@ static int array_list_search(void *array);
 static bool persist_vartype(vartype *v);
 static bool unpersist_vartype(vartype **v, bool padded);
 static void update_label_table(int prgm, int4 pc, int inserted);
-static void invalidate_lclbls(int prgm_index);
+static void invalidate_lclbls(int prgm_index, bool force);
 static int pc_line_convert(int4 loc, int loc_is_pc);
 static bool convert_programs();
 #ifdef BCD_MATH
 static void update_decimal_in_programs();
-#endif
-#ifdef IPHONE
-static void convert_bigstack_drop();
 #endif
 
 #ifdef BCD_MATH
@@ -1139,8 +1135,6 @@ static bool persist_globals() {
         goto done;
     if (!persist_vartype(reg_lastx))
         goto done;
-    if (!write_bool(false))  /* No, big stack block does not exist */
-        goto done;    
     if (!write_int(reg_alpha_length))
         goto done;
     if (!shell_write_saved_state(reg_alpha, 44))
@@ -1152,8 +1146,6 @@ static bool persist_globals() {
     if (!write_bool(mode_time_clktd))
         goto done;
     if (!write_bool(mode_time_clk24))
-        goto done;
-    if (!write_bool(mode_time_dmy))
         goto done;
     if (!shell_write_saved_state(&flags, sizeof(flags_struct)))
         goto done;
@@ -1221,10 +1213,17 @@ static bool unpersist_globals(int4 ver) {
 #else
     bool padded = false;
 #endif
+    char tmp_dmy = 2;
 
     free_vartype(reg_x);
     if (!unpersist_vartype(&reg_x, padded))
         goto done;
+
+    // Hack to deal with bad Android state files
+    if (reg_x == NULL)
+        goto done;
+    // End of hack
+
     free_vartype(reg_y);
     if (!unpersist_vartype(&reg_y, padded))
         goto done;
@@ -1238,8 +1237,8 @@ static bool unpersist_globals(int4 ver) {
     if (!unpersist_vartype(&reg_lastx, padded))
         goto done;
 
-    if (ver >= 12) {
-        /* BIGSTACK -- iphone only; no longer used in Free42 proper */
+    if (ver >= 12 && ver < 20) {
+        /* BIGSTACK -- obsolete */
         bool bigstack;
         if (!read_bool(&bigstack))
             goto done;
@@ -1270,14 +1269,18 @@ static bool unpersist_globals(int4 ver) {
             mode_time_clk24 = false;
             goto done;
         }
-        if (!read_bool(&mode_time_dmy)) {
-            mode_time_dmy = false;
-            goto done;
+        if (ver < 19) {
+            bool dmy;
+            if (!read_bool(&dmy))
+                goto done;
+            tmp_dmy = dmy ? 1 : 0;
         }
     }
     if (shell_read_saved_state(&flags, sizeof(flags_struct))
             != sizeof(flags_struct))
         goto done;
+    if (tmp_dmy != 2)
+        flags.f.dmy = tmp_dmy;
     vars_capacity = 0;
     if (vars != NULL) {
         free(vars);
@@ -1307,6 +1310,10 @@ static bool unpersist_globals(int4 ver) {
             purge_all_vars();
             goto done;
         }
+
+    // Purging zero-length var that may have been created by buggy INTEG
+    purge_var("", 0);
+
     prgms_capacity = 0;
     if (prgms != NULL) {
         free(prgms);
@@ -1390,11 +1397,16 @@ static bool unpersist_globals(int4 ver) {
             goto done;
 #endif
 
-    if (bin_dec_mode_switch())
+    if (bin_dec_mode_switch()) {
         if (!convert_programs()) {
             clear_all_prgms();
             goto done;
         }
+    } else {
+        if (ver < 22)
+            for (i = 0; i < prgms_count; i++)
+                invalidate_lclbls(i, true);
+    }
 
 #ifdef BCD_MATH
     if (state_file_number_format == NUMBER_FORMAT_BCD20_OLD
@@ -1402,13 +1414,6 @@ static bool unpersist_globals(int4 ver) {
         update_decimal_in_programs();
 #endif
 
-#ifdef IPHONE
-    if (ver == 12 || ver == 13) {
-        // CMD_DROP redefined from 315 to 329, to resolve clash with
-        // Underhill's COPAN extensions.
-        convert_bigstack_drop();
-    }
-#endif
     rebuild_label_table();
     ret = true;
 
@@ -1533,7 +1538,7 @@ void clear_prgm_lines(int4 count) {
     }
     labels_count = i;
 
-    invalidate_lclbls(current_prgm);
+    invalidate_lclbls(current_prgm, false);
     clear_all_rtns();
 }
 
@@ -1606,7 +1611,8 @@ int get_command_length(int prgm_index, int4 pc) {
     argtype &= 15;
 
     if ((command == CMD_GTO || command == CMD_XEQ)
-            && (argtype == ARGTYPE_NUM || argtype == ARGTYPE_LCLBL))
+            && (argtype == ARGTYPE_NUM || argtype == ARGTYPE_STK
+                                       || argtype == ARGTYPE_LCLBL))
         pc2 += 4;
     switch (argtype) {
         case ARGTYPE_NUM:
@@ -1646,7 +1652,8 @@ void get_next_command(int4 *pc, int *command, arg_struct *arg, int find_target){
 
     if ((*command == CMD_GTO || *command == CMD_XEQ)
             && (arg->type == ARGTYPE_NUM
-                || arg->type == ARGTYPE_LCLBL)) {
+                || arg->type == ARGTYPE_LCLBL
+                || arg->type == ARGTYPE_STK)) {
         if (find_target) {
             target_pc = 0;
             for (i = 0; i < 4; i++)
@@ -1782,9 +1789,9 @@ static void update_label_table(int prgm, int4 pc, int inserted) {
     }
 }
 
-static void invalidate_lclbls(int prgm_index) {
+static void invalidate_lclbls(int prgm_index, bool force) {
     prgm_struct *prgm = prgms + prgm_index;
-    if (!prgm->lclbl_invalid) {
+    if (force || !prgm->lclbl_invalid) {
         int4 pc2 = 0;
         while (pc2 < prgm->size) {
             int command = prgm->text[pc2];
@@ -1792,7 +1799,8 @@ static void invalidate_lclbls(int prgm_index) {
             command |= (argtype & 240) << 4;
             argtype &= 15;
             if ((command == CMD_GTO || command == CMD_XEQ)
-                    && (argtype == ARGTYPE_NUM || argtype == ARGTYPE_LCLBL)) {
+                    && (argtype == ARGTYPE_NUM || argtype == ARGTYPE_STK
+                                               || argtype == ARGTYPE_LCLBL)) {
                 /* A dest_pc value of -1 signals 'unknown',
                  * -2 means 'nonexistent', and anything else is
                  * the pc where the destination label is found.
@@ -1843,7 +1851,7 @@ void delete_command(int4 pc) {
             prgms[pos] = prgms[pos + 1];
         prgms_count--;
         rebuild_label_table();
-        invalidate_lclbls(current_prgm);
+        invalidate_lclbls(current_prgm, true);
         clear_all_rtns();
         draw_varmenu();
         return;
@@ -1856,7 +1864,7 @@ void delete_command(int4 pc) {
         rebuild_label_table();
     else
         update_label_table(current_prgm, pc, -length);
-    invalidate_lclbls(current_prgm);
+    invalidate_lclbls(current_prgm, false);
     clear_all_rtns();
     draw_varmenu();
 }
@@ -1943,19 +1951,20 @@ void store_command(int4 pc, int command, arg_struct *arg) {
         prgm->size = pc;
         prgm->text[prgm->size++] = CMD_END;
         prgm->text[prgm->size++] = ARGTYPE_NONE;
-        if (flags.f.trace_print || flags.f.normal_print)
+        if (flags.f.printer_exists && (flags.f.trace_print || flags.f.normal_print))
             print_program_line(current_prgm - 1, pc);
 
         rebuild_label_table();
-        invalidate_lclbls(current_prgm);
-        invalidate_lclbls(current_prgm - 1);
+        invalidate_lclbls(current_prgm, true);
+        invalidate_lclbls(current_prgm - 1, true);
         clear_all_rtns();
         draw_varmenu();
         return;
     }
 
     if ((command == CMD_GTO || command == CMD_XEQ)
-            && (arg->type == ARGTYPE_NUM || arg->type == ARGTYPE_LCLBL))
+            && (arg->type == ARGTYPE_NUM || arg->type == ARGTYPE_STK 
+                                         || arg->type == ARGTYPE_LCLBL))
         for (i = 0; i < 4; i++)
             buf[bufptr++] = 255;
     switch (arg->type) {
@@ -2016,7 +2025,7 @@ void store_command(int4 pc, int command, arg_struct *arg) {
     for (pos = 0; pos < bufptr; pos++)
         prgm->text[pc + pos] = buf[pos];
     prgm->size += bufptr;
-    if (command != CMD_END && (flags.f.trace_print || flags.f.normal_print))
+    if (command != CMD_END && flags.f.printer_exists && (flags.f.trace_print || flags.f.normal_print))
         print_program_line(current_prgm, pc);
     
     if (command == CMD_END ||
@@ -2024,7 +2033,7 @@ void store_command(int4 pc, int command, arg_struct *arg) {
         rebuild_label_table();
     else
         update_label_table(current_prgm, pc, bufptr);
-    invalidate_lclbls(current_prgm);
+    invalidate_lclbls(current_prgm, false);
     clear_all_rtns();
     draw_varmenu();
 }
@@ -2093,7 +2102,8 @@ int4 find_local_label(const arg_struct *arg) {
         argtype = prgm->text[search_pc + 1];
         command |= (argtype & 240) << 4;
         argtype &= 15;
-        if (command == CMD_LBL && argtype == arg->type) {
+        if (command == CMD_LBL && (argtype == arg->type
+                                || argtype == ARGTYPE_STK)) {
             if (argtype == ARGTYPE_NUM) {
                 int num = 0;
                 unsigned char c;
@@ -2104,6 +2114,25 @@ int4 find_local_label(const arg_struct *arg) {
                 } while ((c & 128) == 0);
                 if (num == arg->val.num)
                     return search_pc;
+            } else if (argtype == ARGTYPE_STK) {
+                // Synthetic LBL ST T etc.
+                // Allow GTO ST T and GTO 112
+                char stk = prgm->text[search_pc + 2];
+                if (arg->type == ARGTYPE_STK) {
+                    if (stk = arg->val.stk)
+                        return search_pc;
+                } else if (arg->type == ARGTYPE_NUM) {
+                    int num = 0;
+                    switch (stk) {
+                        case 'T': num = 112; break;
+                        case 'Z': num = 113; break;
+                        case 'Y': num = 114; break;
+                        case 'X': num = 115; break;
+                        case 'L': num = 116; break;
+                    }
+                    if (num == arg->val.num)
+                        return search_pc;
+                }
             } else {
                 char lclbl = prgm->text[search_pc + 2];
                 if (lclbl == arg->val.lclbl)
@@ -2206,6 +2235,14 @@ static bool write_int4(int4 n) {
     return shell_write_saved_state(&n, sizeof(int4));
 }
 
+static bool read_int8(int8 *n) {
+    return shell_read_saved_state(n, sizeof(int8)) == sizeof(int8);
+}
+
+static bool write_int8(int8 n) {
+    return shell_write_saved_state(&n, sizeof(int8));
+}
+
 static bool read_bool(bool *b) {
     if (state_bool_is_int) {
         int t;
@@ -2289,10 +2326,9 @@ bool load_state(int4 ver) {
             if (!read_int(&dummy)) return false;
         }
     }
-    if (ver < 5)
-        core_settings.raw_text = false;
-    else {
-        if (!read_bool(&core_settings.raw_text)) return false;
+    if (ver >= 5 && ver < 20) {
+        bool bdummy;
+        if (!read_bool(&bdummy)) return false;
         if (ver < 8) {
             int dummy;
             if (!read_int(&dummy)) return false;
@@ -2303,16 +2339,6 @@ bool load_state(int4 ver) {
     else
         if (!read_bool(&core_settings.auto_repeat)) return false;
     if (ver < 15) {
-        #if defined(COPAN)
-            core_settings.enable_ext_copan = true;
-        #else
-            core_settings.enable_ext_copan = false;
-        #endif
-        #if defined(BIGSTACK)
-            core_settings.enable_ext_bigstack = true;
-        #else
-            core_settings.enable_ext_bigstack = false;
-        #endif
         #if defined(ANDROID) || defined(IPHONE)
             core_settings.enable_ext_accel = true;
             core_settings.enable_ext_locat = true;
@@ -2324,8 +2350,11 @@ bool load_state(int4 ver) {
         #endif
         core_settings.enable_ext_time = true;
     } else {
-        if (!read_bool(&core_settings.enable_ext_copan)) return false;
-        if (!read_bool(&core_settings.enable_ext_bigstack)) return false;
+        if (ver < 20) {
+            bool dummy;
+            if (!read_bool(&dummy)) return false;
+            if (!read_bool(&dummy)) return false;
+        }
         if (!read_bool(&core_settings.enable_ext_accel)) return false;
         if (!read_bool(&core_settings.enable_ext_locat)) return false;
         if (!read_bool(&core_settings.enable_ext_heading)) return false;
@@ -2394,8 +2423,16 @@ bool load_state(int4 ver) {
 
     if (!read_int(&baseapp)) return false;
 
-    if (!read_phloat(&random_number))
-        return false;
+    if (ver < 21) {
+        phloat random_number;
+        if (!read_phloat(&random_number))
+            return false;
+        random_number_low = to_int8(random_number * 1000000) * 10 + 1;
+        random_number_high = 0;
+    } else {
+        if (!read_int8(&random_number_low)) return false;
+        if (!read_int8(&random_number_high)) return false;
+    }
 
     if (ver < 3) {
         deferred_print = 0;
@@ -2475,10 +2512,7 @@ void save_state() {
     #endif
     if (!write_bool(core_settings.matrix_singularmatrix)) return;
     if (!write_bool(core_settings.matrix_outofrange)) return;
-    if (!write_bool(core_settings.raw_text)) return;
     if (!write_bool(core_settings.auto_repeat)) return;
-    if (!write_bool(core_settings.enable_ext_copan)) return;
-    if (!write_bool(core_settings.enable_ext_bigstack)) return;
     if (!write_bool(core_settings.enable_ext_accel)) return;
     if (!write_bool(core_settings.enable_ext_locat)) return;
     if (!write_bool(core_settings.enable_ext_heading)) return;
@@ -2536,7 +2570,8 @@ void save_state() {
 
     if (!write_int(baseapp)) return;
 
-    if (!write_phloat(random_number)) return;
+    if (!write_int8(random_number_low)) return;
+    if (!write_int8(random_number_high)) return;
 
     if (!write_int(deferred_print)) return;
 
@@ -2598,7 +2633,8 @@ void hard_reset(int bad_state_file) {
     matedit_mode = 0;
     input_length = 0;
     baseapp = 0;
-    random_number = shell_random_seed();
+    random_number_low = 0;
+    random_number_high = 0;
 
     flags.f.f00 = flags.f.f01 = flags.f.f02 = flags.f.f03 = flags.f.f04 = 0;
     flags.f.f05 = flags.f.f06 = flags.f.f07 = flags.f.f08 = flags.f.f09 = 0;
@@ -2610,7 +2646,7 @@ void hard_reset(int bad_state_file) {
     flags.f.trace_print = 0;
     flags.f.normal_print = 0;
     flags.f.f17 = flags.f.f18 = flags.f.f19 = flags.f.f20 = 0;
-    flags.f.printer_enable = 1; // HP-42S sets this to 0 on hard reset
+    flags.f.printer_enable = 0;
     flags.f.numeric_data_input = 0;
     flags.f.alpha_data_input = 0;
     flags.f.range_error_ignore = 0;
@@ -2620,7 +2656,8 @@ void hard_reset(int bad_state_file) {
     flags.f.decimal_point = shell_decimal_point(); // HP-42S sets this to 1 on hard reset
     flags.f.thousands_separators = 1;
     flags.f.stack_lift_disable = 0;
-    flags.f.f31 = flags.f.f32 = flags.f.f33 = 0;
+    flags.f.dmy = 0;
+    flags.f.f32 = flags.f.f33 = 0;
     flags.f.agraph_control1 = 0;
     flags.f.agraph_control0 = 0;
     flags.f.digits_bit3 = 0;
@@ -2631,18 +2668,18 @@ void hard_reset(int bad_state_file) {
     flags.f.eng_or_all = 0;
     flags.f.grad = 0;
     flags.f.rad = 0;
-    flags.f.continuous_on = 0;
+    /* flags.f.VIRTUAL_continuous_on = 0; */
     /* flags.f.VIRTUAL_solving = 0; */
     /* flags.f.VIRTUAL_integrating = 0; */
     /* flags.f.VIRTUAL_variable_menu = 0; */
-    flags.f.alpha_mode = 0;
+    /* flags.f.VIRTUAL_alpha_mode = 0; */
     /* flags.f.VIRTUAL_low_battery = 0; */
     flags.f.message = 1;
     flags.f.two_line_message = 0;
     flags.f.prgm_mode = 0;
     /* flags.f.VIRTUAL_input = 0; */
     flags.f.f54 = 0;
-    flags.f.printer_exists = 1; // HP-42S sets this to 0 on hard reset
+    flags.f.printer_exists = 0;
     flags.f.lin_fit = 1;
     flags.f.log_fit = 0;
     flags.f.exp_fit = 0;
@@ -2692,19 +2729,8 @@ void hard_reset(int bad_state_file) {
     mode_goose = -1;
     mode_time_clktd = false;
     mode_time_clk24 = false;
-    mode_time_dmy = false;
 
     core_settings.auto_repeat = true;
-    #if defined(COPAN)
-        core_settings.enable_ext_copan = true;
-    #else
-        core_settings.enable_ext_copan = false;
-    #endif
-    #if defined(BIGSTACK)
-        core_settings.enable_ext_bigstack = true;
-    #else
-        core_settings.enable_ext_bigstack = false;
-    #endif
     #if defined(ANDROID) || defined(IPHONE)
         core_settings.enable_ext_accel = true;
         core_settings.enable_ext_locat = true;
@@ -2962,7 +2988,8 @@ static bool convert_programs() {
             if (command == CMD_END)
                 break;
             if ((command == CMD_GTO || command == CMD_XEQ)
-                    && (argtype == ARGTYPE_NUM || argtype == ARGTYPE_LCLBL)) {
+                    && (argtype == ARGTYPE_NUM || argtype == ARGTYPE_STK
+                                               || argtype == ARGTYPE_LCLBL)) {
                 // Invalidate local label offsets
                 prgm->text[pc++] = 255;
                 prgm->text[pc++] = 255;
@@ -3019,8 +3046,7 @@ static bool convert_programs() {
                         prgm->size += growth;
                         oldpc -= growth;
 
-                        phloat p;
-                        p.val = double_to_12_digit_decimal(d);
+                        phloat p(d);
                         b = (unsigned char *) &p;
                         for (j = 0; j < (int) sizeof(phloat); j++)
                             prgm->text[pc++] = *b++;
@@ -3077,7 +3103,8 @@ static void update_decimal_in_programs() {
             if (command == CMD_END)
                 break;
             if ((command == CMD_GTO || command == CMD_XEQ)
-                    && (argtype == ARGTYPE_NUM || argtype == ARGTYPE_LCLBL)) {
+                    && (argtype == ARGTYPE_NUM || argtype == ARGTYPE_STK
+                                               || argtype == ARGTYPE_LCLBL)) {
                 // Skip local label offsets
                 pc += 4;
             }
@@ -3116,63 +3143,6 @@ static void update_decimal_in_programs() {
 
     current_prgm = saved_prgm;
     pc = saved_pc;
-}
-#endif
-
-#ifdef IPHONE
-static void convert_bigstack_drop() {
-    // This function is called when we've read an iPhone version state file
-    // with version number 12 or 13. In those two versions, the DROP command
-    // was at index 315 of the commands table, but that conflicted with
-    // Underhill's COPAN extensions. In version 14 and later, I moved DROP
-    // to index 329 to fix this clash. This will allow all extensions to
-    // coexist in the future, should someone want to merge them all into one
-    // build at some point -- and even if that never happens, at least now
-    // all programs in all versions are encoded identically.
-
-    for (int i = 0; i < prgms_count; i++) {
-        int pc = 0;
-        prgm_struct *prgm = prgms + i;
-        while (true) {
-            int command = prgm->text[pc++];
-            int argtype = prgm->text[pc++];
-            command |= (argtype & 240) << 4;
-            argtype &= 15;
-
-            if (command == CMD_END)
-                break;
-            if (command == 315) { // Pre-version-14 value of CMD_DROP
-                prgm->text[pc - 2] = (unsigned char) CMD_DROP;
-                prgm->text[pc - 1] = (unsigned char) ((CMD_DROP & 0xF00) >> 4 | argtype);
-            }
-            if ((command == CMD_GTO || command == CMD_XEQ)
-                    && (argtype == ARGTYPE_NUM || argtype == ARGTYPE_LCLBL)) {
-                pc += 4;
-            }
-            switch (argtype) {
-                case ARGTYPE_NUM:
-                case ARGTYPE_NEG_NUM:
-                case ARGTYPE_IND_NUM: {
-                    while ((prgm->text[pc++] & 128) == 0);
-                    break;
-                }
-                case ARGTYPE_STK:
-                case ARGTYPE_IND_STK:
-                case ARGTYPE_COMMAND:
-                case ARGTYPE_LCLBL:
-                    pc++;
-                    break;
-                case ARGTYPE_STR:
-                case ARGTYPE_IND_STR: {
-                    pc += prgm->text[pc] + 1;
-                    break;
-                }
-                case ARGTYPE_DOUBLE:
-                    pc += sizeof(phloat);
-                    break;
-            }
-        }
-    }
 }
 #endif
 

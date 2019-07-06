@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -30,8 +30,10 @@ import java.lang.reflect.Method;
 import java.nio.IntBuffer;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
-import java.util.Date;
+import java.util.ArrayList;
+import java.util.List;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -42,6 +44,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
@@ -59,20 +62,21 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioManager;
 import android.media.SoundPool;
+import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Vibrator;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.text.SpannableString;
 import android.text.method.LinkMovementMethod;
 import android.text.util.Linkify;
 import android.view.KeyEvent;
-import android.view.Menu;
-import android.view.MenuInflater;
-import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
@@ -90,11 +94,15 @@ public class Free42Activity extends Activity {
 
     private static final String[] builtinSkinNames = new String[] { "Standard", "Landscape" };
     
-    private static final int SHELL_VERSION = 9;
+    private static final int SHELL_VERSION = 12;
     
     private static final int PRINT_BACKGROUND_COLOR = Color.LTGRAY;
     
+    private static final int MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 1;
+    
     public static Free42Activity instance;
+    
+    public static final String MY_STORAGE_DIR = Environment.getExternalStorageDirectory() + "/Android/data/com.thomasokken.free42";
     
     static {
         System.loadLibrary("free42");
@@ -106,7 +114,9 @@ public class Free42Activity extends Activity {
     private ScrollView printScrollView;
     private boolean printViewShowing;
     private PreferencesDialog preferencesDialog;
+    private AlertDialog mainMenuDialog;
     private Handler mainHandler;
+    private boolean alwaysOn;
     
     private SoundPool soundPool;
     private int[] soundIds;
@@ -135,7 +145,9 @@ public class Free42Activity extends Activity {
     private String[] externalSkinName = new String[2];
     private boolean[] skinSmoothing = new boolean[2];
     private boolean[] displaySmoothing = new boolean[2];
+    private boolean[] maintainSkinAspect = new boolean[2];
 
+    private boolean alwaysRepaintFullDisplay = false;
     private boolean keyClicksEnabled = true;
     private boolean keyVibrationEnabled = false;
     private int preferredOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
@@ -173,6 +185,9 @@ public class Free42Activity extends Activity {
             init_shell_state(-1);
             init_mode = 0;
         }
+        setAlwaysRepaintFullDisplay(alwaysRepaintFullDisplay);
+        if (alwaysOn)
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         if (style == 1)
             setTheme(android.R.style.Theme_NoTitleBar_Fullscreen);
@@ -197,21 +212,22 @@ public class Free42Activity extends Activity {
         skin = null;
         if (skinName[orientation].length() == 0 && externalSkinName[orientation].length() > 0) {
             try {
-                skin = new SkinLayout(externalSkinName[orientation], skinSmoothing[orientation], displaySmoothing[orientation]);
+                skin = new SkinLayout(externalSkinName[orientation], skinSmoothing[orientation], displaySmoothing[orientation], maintainSkinAspect[orientation]);
             } catch (IllegalArgumentException e) {}
         }
         if (skin == null) {
             try {
-                skin = new SkinLayout(skinName[orientation], skinSmoothing[orientation], displaySmoothing[orientation]);
+                skin = new SkinLayout(skinName[orientation], skinSmoothing[orientation], displaySmoothing[orientation], maintainSkinAspect[orientation]);
             } catch (IllegalArgumentException e) {}
         }
         if (skin == null) {
             try {
-                skin = new SkinLayout(builtinSkinNames[0], skinSmoothing[orientation], displaySmoothing[orientation]);
+                skin = new SkinLayout(builtinSkinNames[0], skinSmoothing[orientation], displaySmoothing[orientation], maintainSkinAspect[orientation]);
             } catch (IllegalArgumentException e) {
                 // This one should never fail; we're loading a built-in skin.
             }
         }
+        calcView.updateScale();
 
         nativeInit();
         core_init(init_mode, version.value);
@@ -222,35 +238,18 @@ public class Free42Activity extends Activity {
             stateFileInputStream = null;
         }
         
-        CoreSettings cs = new CoreSettings();
-        getCoreSettings(cs);
-        ShellSpool.rawText = cs.raw_text;
-        
-        // Add battery monitor if API >= 4. Lower API levels don't provide
-        // Intent.ACTION_BATTERY_OKAY, and I haven't figured out yet how to
-        // know when to turn off the low-bat annunciator without it.
-        // It may be possible to derive the information from the ACTION_BATTERY_CHANGED
-        // intent, but they sure don't make it very obvious how.
-        String ACTION_BATTERY_OKAY;
-        try {
-            ACTION_BATTERY_OKAY = (String) Intent.class.getField("ACTION_BATTERY_OKAY").get(null);
-        } catch (Exception e) {
-            ACTION_BATTERY_OKAY = null;
-        }
-        if (ACTION_BATTERY_OKAY != null) {
-            lowBatteryReceiver = new BroadcastReceiver() {
-                public void onReceive(Context ctx, Intent intent) {
-                    low_battery = intent.getAction().equals(Intent.ACTION_BATTERY_LOW);
-                    Rect inval = skin.update_annunciators(-1, -1, -1, -1, low_battery ? 1 : 0, -1, -1);
-                    if (inval != null)
-                        calcView.postInvalidateScaled(inval.left, inval.top, inval.right, inval.bottom);
-                }
-            };
-            IntentFilter iff = new IntentFilter();
-            iff.addAction(Intent.ACTION_BATTERY_LOW);
-            iff.addAction(ACTION_BATTERY_OKAY);
-            registerReceiver(lowBatteryReceiver, iff);
-        }
+        lowBatteryReceiver = new BroadcastReceiver() {
+            public void onReceive(Context ctx, Intent intent) {
+                low_battery = intent.getAction().equals(Intent.ACTION_BATTERY_LOW);
+                Rect inval = skin.update_annunciators(-1, -1, -1, -1, low_battery ? 1 : 0, -1, -1);
+                if (inval != null)
+                    calcView.postInvalidateScaled(inval.left, inval.top, inval.right, inval.bottom);
+            }
+        };
+        IntentFilter iff = new IntentFilter();
+        iff.addAction(Intent.ACTION_BATTERY_LOW);
+        iff.addAction(Intent.ACTION_BATTERY_OKAY);
+        registerReceiver(lowBatteryReceiver, iff);
         
         if (preferredOrientation != this.getRequestedOrientation())
             setRequestedOrientation(preferredOrientation);
@@ -265,6 +264,23 @@ public class Free42Activity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        
+        // Check battery level -- this is necessary because the ACTTON_BATTERY_LOW
+        // and ACTION_BATTERY_OKAY intents are not "sticky", i.e., we get those
+        // notifications only when that status *changes*; we don't get any indication
+        // of what that status *is* when the app is launched (or resumed?).
+        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        Intent batteryStatus = registerReceiver(null, ifilter);
+        int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+        int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+        if (low_battery)
+            low_battery = level * 100 < scale * 20;
+        else
+            low_battery = level * 100 <= scale * 15;
+        Rect inval = skin.update_annunciators(-1, -1, -1, -1, low_battery ? 1 : 0, -1, -1);
+        if (inval != null)
+            calcView.postInvalidateScaled(inval.left, inval.top, inval.right, inval.bottom);
+
         if (core_powercycle())
             start_core_keydown();
     }
@@ -284,9 +300,12 @@ public class Free42Activity extends Activity {
     protected void onPause() {
         end_core_keydown();
         // Write state file
+        File filesDir = getFilesDir();
+        File stateFile = null;
         try {
-            stateFileOutputStream = openFileOutput("state", Context.MODE_PRIVATE);
-        } catch (FileNotFoundException e) {
+            stateFile = File.createTempFile("state.", ".new", filesDir);
+            stateFileOutputStream = new FileOutputStream(stateFile, true);
+        } catch (IOException e) {
             stateFileOutputStream = null;
         }
         if (stateFileOutputStream != null) {
@@ -296,8 +315,18 @@ public class Free42Activity extends Activity {
         if (stateFileOutputStream != null) {
             try {
                 stateFileOutputStream.close();
-            } catch (IOException e) {}
+            } catch (IOException e) {
+                stateFileOutputStream = null;
+            }
+        }
+        if (stateFileOutputStream != null) {
+            // Writing state file succeeded; rename state.new to state
+            stateFile.renameTo(new File(filesDir, "state"));
             stateFileOutputStream = null;
+        } else {
+            // Writing state file failed; delete state.new, if it even exists
+            if (stateFile != null)
+                stateFile.delete();
         }
         printView.dump();
         if (printTxtStream != null) {
@@ -343,42 +372,38 @@ public class Free42Activity extends Activity {
     }
     
     @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        MenuInflater inflater = getMenuInflater();
-        inflater.inflate(R.menu.menu, menu);
-
-        for (int i = 0; i < builtinSkinNames.length; i++)
-            menu.add(Menu.NONE, Menu.NONE, i, "Skin: \"" + builtinSkinNames[i] + "\"");
-        menu.add(Menu.NONE, Menu.NONE, builtinSkinNames.length, "Skin: Other...");
-        
-        return true;
-    }
-    
-    @Override
     public void onConfigurationChanged(Configuration newConf) {
         super.onConfigurationChanged(newConf);
         orientation = newConf.orientation == Configuration.ORIENTATION_LANDSCAPE ? 1 : 0;
         boolean[] ann_state = skin.getAnnunciators();
-        skin = null;
+        SkinLayout newSkin = null;
         if (skinName[orientation].length() == 0 && externalSkinName[orientation].length() > 0) {
             try {
-                skin = new SkinLayout(externalSkinName[orientation], skinSmoothing[orientation], displaySmoothing[orientation],ann_state);
+                newSkin = new SkinLayout(externalSkinName[orientation], skinSmoothing[orientation], displaySmoothing[orientation], maintainSkinAspect[orientation], ann_state);
             } catch (IllegalArgumentException e) {}
         }
-        if (skin == null) {
+        if (newSkin == null) {
             try {
-                skin = new SkinLayout(skinName[orientation], skinSmoothing[orientation], displaySmoothing[orientation],ann_state);
+                newSkin = new SkinLayout(skinName[orientation], skinSmoothing[orientation], displaySmoothing[orientation], maintainSkinAspect[orientation], ann_state);
             } catch (IllegalArgumentException e) {}
         }
-        if (skin == null) {
+        if (newSkin == null) {
             try {
-                skin = new SkinLayout(builtinSkinNames[0], skinSmoothing[orientation], displaySmoothing[orientation],ann_state);
+                newSkin = new SkinLayout(builtinSkinNames[0], skinSmoothing[orientation], displaySmoothing[orientation], maintainSkinAspect[orientation], ann_state);
             } catch (IllegalArgumentException e) {
                 // This one should never fail; we're loading a built-in skin.
             }
         }
+        if (newSkin != null)
+            skin = newSkin;
+        calcView.updateScale();
         calcView.invalidate();
         core_repaint_display();
+    }
+    
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        // ignore
     }
     
     private void cancelRepeaterAndTimeouts1And2() {
@@ -392,43 +417,70 @@ public class Free42Activity extends Activity {
         timeout3_active = false;
     }
     
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-        case R.id.mi_copy:
+    private void postMainMenu() {
+        if (mainMenuDialog == null) {
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("Main Menu");
+            List<String> itemsList = new ArrayList<String>();
+            itemsList.add("Copy");
+            itemsList.add("Paste");
+            itemsList.add("Preferences");
+            itemsList.add("Show Print-Out");
+            itemsList.add("Clear Print-Out");
+            itemsList.add("About Free42");
+            itemsList.add("Import Programs");
+            itemsList.add("Export Programs");
+            for (int i = 0; i < builtinSkinNames.length; i++)
+                itemsList.add("Skin: \"" + builtinSkinNames[i] + "\"");
+            itemsList.add("Skin: Other...");
+            itemsList.add("Cancel");
+            builder.setItems(itemsList.toArray(new String[itemsList.size()]),
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int which) {
+                            mainMenuItemSelected(which);
+                        }
+                    });
+            mainMenuDialog = builder.create();
+        }
+        mainMenuDialog.show();
+    }
+    
+    private void mainMenuItemSelected(int which) {
+        switch (which) {
+        case 0:
             doCopy();
-            return true;
-        case R.id.mi_paste:
+            return;
+        case 1:
             doPaste();
-            return true;
-        case R.id.mi_preferences:
+            return;
+        case 2:
             doPreferences();
-            return true;
-        case R.id.mi_flip_calc_printout:
+            return;
+        case 3:
             doFlipCalcPrintout();
-            return true;
-        case R.id.mi_clear_printout:
+            return;
+        case 4:
             doClearPrintout();
-            return true;
-        case R.id.mi_about:
+            return;
+        case 5:
             doAbout();
-            return true;
-        case R.id.mi_import:
+            return;
+        case 6:
             doImport();
-            return true;
-        case R.id.mi_export:
+            return;
+        case 7:
             doExport();
-            return true;
+            return;
         default:
-            int index = item.getOrder();
+            int index = which - 8;
             if (index >= 0 && index < builtinSkinNames.length) {
                 doSelectSkin(builtinSkinNames[index]);
-                return true;
+                return;
             } else if (index == builtinSkinNames.length) {
+                if (!checkStorageAccess())
+                    return;
                 FileSelectionDialog fsd = new FileSelectionDialog(this, new String[] { "layout", "*" });
-                if (externalSkinName[orientation].length() == 0)
-                    fsd.setPath(topStorageDir() + "/Free42");
-                else
+                if (externalSkinName[orientation].length() > 0)
                     fsd.setPath(externalSkinName[orientation] + ".layout");
                 fsd.setOkListener(new FileSelectionDialog.OkListener() {
                     public void okPressed(String path) {
@@ -437,11 +489,9 @@ public class Free42Activity extends Activity {
                     }
                 });
                 fsd.show();
-                return true;
+                return;
             }
         }
-
-        return super.onOptionsItemSelected(item);
     }
     
     private void doCopy() {
@@ -451,10 +501,8 @@ public class Free42Activity extends Activity {
     
     private void doPaste() {
         android.text.ClipboardManager clip = (android.text.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        if (clip.hasText()) {
+        if (clip.hasText())
             core_paste(clip.getText().toString());
-            redisplay();
-        }
     }
     
     private void doFlipCalcPrintout() {
@@ -467,8 +515,9 @@ public class Free42Activity extends Activity {
     }
     
     private void doImport() {
+        if (!checkStorageAccess())
+            return;
         FileSelectionDialog fsd = new FileSelectionDialog(this, new String[] { "raw", "*" });
-        fsd.setPath(topStorageDir());
         fsd.setOkListener(new FileSelectionDialog.OkListener() {
             public void okPressed(String path) {
                 doImport2(path);
@@ -514,21 +563,10 @@ public class Free42Activity extends Activity {
     }
 
     private void doExport() {
-        byte[] buf = new byte[10000];
-        int n = core_list_programs(buf);
-        String[] names = new String[n];
-        int begin = 0;
-        for (int i = 0; i < n; i++) {
-            int end = begin;
-            while (buf[end] != 0)
-                end++;
-            try {
-                names[i] = new String(buf, begin, end - begin, "UTF-8");
-            } catch (UnsupportedEncodingException e) {}
-            begin = end + 1;
-        }
-
-        selectedProgramIndexes = new boolean[n];
+        if (!checkStorageAccess())
+            return;
+        String[] names = core_list_programs();
+        selectedProgramIndexes = new boolean[names.length];
         
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Select Programs");
@@ -560,7 +598,6 @@ public class Free42Activity extends Activity {
                 }
             if (!none) {
                 FileSelectionDialog fsd = new FileSelectionDialog(this, new String[] { "raw", "*" });
-                fsd.setPath(topStorageDir());
                 fsd.setOkListener(new FileSelectionDialog.OkListener() {
                     public void okPressed(String path) {
                         doExport2(path);
@@ -602,12 +639,13 @@ public class Free42Activity extends Activity {
     private void doSelectSkin(String skinName) {
         try {
             boolean[] annunciators = skin.getAnnunciators();
-            skin = new SkinLayout(skinName, skinSmoothing[orientation], displaySmoothing[orientation], annunciators);
+            skin = new SkinLayout(skinName, skinSmoothing[orientation], displaySmoothing[orientation], maintainSkinAspect[orientation], annunciators);
             if (skinName.startsWith("/")) {
                 externalSkinName[orientation] = skinName;
                 this.skinName[orientation] = "";
             } else
                 this.skinName[orientation] = skinName;
+            calcView.updateScale();
             calcView.invalidate();
             core_repaint_display();
         } catch (IllegalArgumentException e) {
@@ -630,15 +668,17 @@ public class Free42Activity extends Activity {
         preferencesDialog.setSingularMatrixError(cs.matrix_singularmatrix);
         preferencesDialog.setMatrixOutOfRange(cs.matrix_outofrange);
         preferencesDialog.setAutoRepeat(cs.auto_repeat);
+        preferencesDialog.setAlwaysOn(shell_always_on(-1) != 0);
         preferencesDialog.setKeyClicks(keyClicksEnabled);
         preferencesDialog.setKeyVibration(keyVibrationEnabled);
         preferencesDialog.setOrientation(preferredOrientation);
         preferencesDialog.setStyle(style);
+        preferencesDialog.setDisplayFullRepaint(alwaysRepaintFullDisplay);
+        preferencesDialog.setMaintainSkinAspect(maintainSkinAspect[orientation]);
         preferencesDialog.setSkinSmoothing(skinSmoothing[orientation]);
         preferencesDialog.setDisplaySmoothing(displaySmoothing[orientation]);
         preferencesDialog.setPrintToText(ShellSpool.printToTxt);
         preferencesDialog.setPrintToTextFileName(ShellSpool.printToTxtFileName);
-        preferencesDialog.setRawText(cs.raw_text);
         preferencesDialog.setPrintToGif(ShellSpool.printToGif);
         preferencesDialog.setPrintToGifFileName(ShellSpool.printToGifFileName);
         preferencesDialog.setMaxGifHeight(ShellSpool.maxGifHeight);
@@ -651,15 +691,16 @@ public class Free42Activity extends Activity {
         cs.matrix_singularmatrix = preferencesDialog.getSingularMatrixError();
         cs.matrix_outofrange = preferencesDialog.getMatrixOutOfRange();
         cs.auto_repeat = preferencesDialog.getAutoRepeat();
-        cs.raw_text = preferencesDialog.getRawText();
+        shell_always_on(preferencesDialog.getAlwaysOn() ? 1 : 0);
         keyClicksEnabled = preferencesDialog.getKeyClicks();
         keyVibrationEnabled = preferencesDialog.getKeyVibration();
         int oldOrientation = preferredOrientation;
         preferredOrientation = preferencesDialog.getOrientation();
         style = preferencesDialog.getStyle();
+        alwaysRepaintFullDisplay = preferencesDialog.getDisplayFullRepaint();
         putCoreSettings(cs);
+        setAlwaysRepaintFullDisplay(alwaysRepaintFullDisplay);
 
-        ShellSpool.rawText = cs.raw_text;
         ShellSpool.maxGifHeight = preferencesDialog.getMaxGifHeight();
 
         boolean newPrintEnabled = preferencesDialog.getPrintToText();
@@ -683,9 +724,18 @@ public class Free42Activity extends Activity {
                 printGifFile.close();
             } catch (IOException e) {}
             printGifFile = null;
+            gif_seq = 0;
         }
         ShellSpool.printToGif = newPrintEnabled;
         ShellSpool.printToGifFileName = newFileName;
+        
+        boolean newMaintainSkinAspect = preferencesDialog.getMaintainSkinAspect();
+        if (newMaintainSkinAspect != maintainSkinAspect[orientation]) {
+            maintainSkinAspect[orientation] = newMaintainSkinAspect;
+            skin.setMaintainSkinAspect(newMaintainSkinAspect);
+            calcView.updateScale();
+            calcView.invalidate();
+        }
         
         boolean newSkinSmoothing = preferencesDialog.getSkinSmoothing();
         boolean newDisplaySmoothing = preferencesDialog.getDisplaySmoothing();
@@ -737,7 +787,7 @@ public class Free42Activity extends Activity {
 
                 TextView label2 = new TextView(context);
                 label2.setId(3);
-                label2.setText("(C) 2004-2016 Thomas Okken");
+                label2.setText("(C) 2004-2019 Thomas Okken");
                 lp = new RelativeLayout.LayoutParams(RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
                 lp.addRule(RelativeLayout.ALIGN_LEFT, label1.getId());
                 lp.addRule(RelativeLayout.BELOW, label1.getId());
@@ -756,7 +806,7 @@ public class Free42Activity extends Activity {
 
                 TextView label4 = new TextView(context);
                 label4.setId(5);
-                s = new SpannableString("http://groups.google.com/group/free42discuss");
+                s = new SpannableString("http://thomasokken.com/free42/42s.pdf");
                 Linkify.addLinks(s, Linkify.WEB_URLS);
                 label4.setText(s);
                 label4.setMovementMethod(LinkMovementMethod.getInstance());
@@ -789,21 +839,35 @@ public class Free42Activity extends Activity {
     private class CalcView extends View {
         
         private int width, height;
+        private float hScale, vScale;
         private boolean possibleMenuEvent = false;
 
         public CalcView(Context context) {
             super(context);
+        }
+        
+        public void updateScale() {
+            if (skin.getMaintainSkinAspect()) {
+                if (width > height)
+                    hScale = vScale = ((float) height) / skin.getHeight();
+                else
+                    hScale = vScale = ((float) width) / skin.getWidth();
+            } else {
+                vScale = ((float) height) / skin.getHeight();
+                hScale = ((float) width) / skin.getWidth();
+            }
         }
 
         @Override
         protected void onSizeChanged(int w, int h, int oldw, int oldh) {
             width = w;
             height = h;
+            updateScale();
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
-            canvas.scale(((float) width) / skin.getWidth(), ((float) height) / skin.getHeight());
+            canvas.scale(hScale, vScale);
             skin.repaint(canvas);
         }
         
@@ -817,8 +881,8 @@ public class Free42Activity extends Activity {
             cancelRepeaterAndTimeouts1And2();
             
             if (what == MotionEvent.ACTION_DOWN) {
-                int x = (int) (e.getX() * skin.getWidth() / width);
-                int y = (int) (e.getY() * skin.getHeight() / height);
+                int x = (int) (e.getX() / hScale);
+                int y = (int) (e.getY() / vScale);
                 IntHolder skeyHolder = new IntHolder();
                 IntHolder ckeyHolder = new IntHolder();
                 skin.find_key(core_menu(), x, y, skeyHolder, ckeyHolder);
@@ -869,10 +933,10 @@ public class Free42Activity extends Activity {
             } else {
                 if (possibleMenuEvent) {
                     possibleMenuEvent = false;
-                    int x = (int) (e.getX() * skin.getWidth() / width);
-                    int y = (int) (e.getY() * skin.getHeight() / height);
+                    int x = (int) (e.getX() / hScale);
+                    int y = (int) (e.getY() / vScale);
                     if (skin.in_menu_area(x, y))
-                        Free42Activity.this.openOptionsMenu();
+                        Free42Activity.this.postMainMenu();
                 }
                 ckey = 0;
                 Rect inval = skin.set_active_key(-1);
@@ -888,18 +952,18 @@ public class Free42Activity extends Activity {
         }
         
         public void postInvalidateScaled(int left, int top, int right, int bottom) {
-            left = (int) Math.floor(((double) left) * width / skin.getWidth());
-            top = (int) Math.floor(((double) top) * height / skin.getHeight());
-            right = (int) Math.ceil(((double) right) * width / skin.getWidth());
-            bottom = (int) Math.ceil(((double) bottom) * height / skin.getHeight());
+            left = (int) Math.floor(((double) left) * hScale);
+            top = (int) Math.floor(((double) top) * vScale);
+            right = (int) Math.ceil(((double) right) * hScale);
+            bottom = (int) Math.ceil(((double) bottom) * vScale);
             postInvalidate(left - 1, top - 1, right + 2, bottom + 2);
         }
 
         private void invalidateScaled(Rect inval) {
-            inval.left = (int) Math.floor(((double) inval.left) * width / skin.getWidth());
-            inval.top = (int) Math.floor(((double) inval.top) * height / skin.getHeight());
-            inval.right = (int) Math.ceil(((double) inval.right) * width / skin.getWidth());
-            inval.bottom = (int) Math.ceil(((double) inval.bottom) * height / skin.getHeight());
+            inval.left = (int) Math.floor(((double) inval.left) * hScale);
+            inval.top = (int) Math.floor(((double) inval.top) * vScale);
+            inval.right = (int) Math.ceil(((double) inval.right) * hScale);
+            inval.bottom = (int) Math.ceil(((double) inval.bottom) * vScale);
             inval.inset(-1, -1);
             invalidate(inval);
         }
@@ -913,7 +977,11 @@ public class Free42Activity extends Activity {
     private class PrintView extends View {
         
         private static final int BYTESPERLINE = 18;
-        private static final int LINES = 16384;
+        // Certain devices have trouble with LINES = 16384; the print-out view collapses.
+        // No idea how to detect this behavior, so unclear how to work around it.
+        // Playing safe by making the print-out buffer smaller.
+        // private static final int LINES = 16384;
+        private static final int LINES = 8192;
         
         private byte[] buffer = new byte[LINES * BYTESPERLINE];
         private int top, bottom;
@@ -929,6 +997,11 @@ public class Free42Activity extends Activity {
                 if (printInputStream.read(intBuf) != 4)
                     throw new IOException();
                 int len = (intBuf[0] << 24) | ((intBuf[1] & 255) << 16) | ((intBuf[2] & 255) << 8) | (intBuf[3] & 255);
+                int maxlen = (LINES - 1) * BYTESPERLINE;
+                if (len > maxlen) {
+                    printInputStream.skip(len - maxlen);
+                    len = maxlen;
+                }
                 int n = printInputStream.read(buffer, 0, len);
                 if (n != len)
                     throw new IOException();
@@ -1017,6 +1090,11 @@ public class Free42Activity extends Activity {
             printScrollView.fullScroll(View.FOCUS_DOWN);
         }
         
+        private Object invalidatePendingMonitor = new Object();
+        private boolean invalidatePending;
+        private Object layoutPendingMonitor = new Object();
+        private boolean layoutPending;
+        
         public void print(byte[] bits, int bytesperline, int x, int y, int width, int height) {
             int oldPrintHeight = printHeight;
             for (int yy = y; yy < y + height; yy++) {
@@ -1039,18 +1117,34 @@ public class Free42Activity extends Activity {
                 }
             }
             if (printHeight != oldPrintHeight) {
-                mainHandler.post(new Runnable() {
-                    public void run() {
-                        printView.requestLayout();
+                synchronized (layoutPendingMonitor) {
+                    if (!layoutPending) {
+                        mainHandler.post(new Runnable() {
+                            public void run() {
+                                synchronized (layoutPendingMonitor) {
+                                    printView.requestLayout();
+                                    layoutPending = false;
+                                }
+                            }
+                        });
+                        layoutPending = true;
                     }
-                });
+                }
             } else {
-                mainHandler.post(new Runnable() {
-                    public void run() {
-                        printScrollView.fullScroll(View.FOCUS_DOWN);
+                synchronized (invalidatePendingMonitor) {
+                    if (!invalidatePending) {
+                        mainHandler.post(new Runnable() {
+                            public void run() {
+                                synchronized (invalidatePendingMonitor) {
+                                    printScrollView.fullScroll(View.FOCUS_DOWN);
+                                    printView.postInvalidate();
+                                    invalidatePending = false;
+                                }
+                            }
+                        });
+                        invalidatePending = true;
                     }
-                });
-                printView.postInvalidate();
+                }
             }
         }
         
@@ -1143,6 +1237,10 @@ public class Free42Activity extends Activity {
                     style = maxStyle;
             } else
                 style = 0;
+            if (shell_version >= 10)
+                alwaysRepaintFullDisplay = state_read_boolean();
+            if (shell_version >= 11)
+                alwaysOn = state_read_boolean();
             init_shell_state(shell_version);
         } catch (IllegalArgumentException e) {
             return false;
@@ -1190,7 +1288,17 @@ public class Free42Activity extends Activity {
             style = 0;
             // fall through
         case 9:
-            // current version (SHELL_VERSION = 9),
+            alwaysRepaintFullDisplay = false;
+            // fall through
+        case 10:
+            alwaysOn = false;
+            // fall through
+        case 11:
+            maintainSkinAspect[0] = false;
+            maintainSkinAspect[1] = false;
+            // fall through
+        case 12:
+            // current version (SHELL_VERSION = 12),
             // so nothing to do here since everything
             // was initialized from the state file.
             ;
@@ -1219,6 +1327,8 @@ public class Free42Activity extends Activity {
             state_write_boolean(displaySmoothing[1]);
             state_write_boolean(keyVibrationEnabled);
             state_write_int(style);
+            state_write_boolean(alwaysRepaintFullDisplay);
+            state_write_boolean(alwaysOn);
         } catch (IllegalArgumentException e) {}
     }
     
@@ -1384,23 +1494,21 @@ public class Free42Activity extends Activity {
     private native boolean core_timeout3(int repaint);
     private native boolean core_keyup();
     private native boolean core_powercycle();
-    private native int core_list_programs(byte[] buf);
+    private native String[] core_list_programs();
     //private native int core_program_size(int prgm_index);
-    private native boolean core_export_programs(int[] indexes);
+    private native void core_export_programs(int[] indexes);
     private native void core_import_programs();
     private native String core_copy();
     private native void core_paste(String s);
     private native void getCoreSettings(CoreSettings settings);
     private native void putCoreSettings(CoreSettings settings);
     private native void redisplay();
+    private native void setAlwaysRepaintFullDisplay(boolean alwaysRepaint);
 
     private static class CoreSettings {
         public boolean matrix_singularmatrix;
         public boolean matrix_outofrange;
-        public boolean raw_text;
         public boolean auto_repeat;
-        @SuppressWarnings("unused") public boolean enable_ext_copan;
-        @SuppressWarnings("unused") public boolean enable_ext_bigstack;
         @SuppressWarnings("unused") public boolean enable_ext_accel;
         @SuppressWarnings("unused") public boolean enable_ext_locat;
         @SuppressWarnings("unused") public boolean enable_ext_heading;
@@ -1464,6 +1572,32 @@ public class Free42Activity extends Activity {
 
     private final int[] cutoff_freqs = { 164, 220, 243, 275, 293, 324, 366, 418, 438, 550 };
     
+    private PrintAnnunciatorTurnerOffer pato = null;
+
+    private class PrintAnnunciatorTurnerOffer extends Thread {
+        public void run() {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                return;
+            } finally {
+                if (pato == this)
+                    pato = null;
+                else
+                    return;
+            }
+            // Don't invalidate if the skin is null, which could happen
+            // if we're in the process of switching between portrait and
+            // landscape modes.
+            SkinLayout currentSkin = skin;
+            if (currentSkin != null) {
+                Rect inval = currentSkin.update_annunciators(-1, -1, 0, -1, -1, -1, -1);
+                if (inval != null)
+                    calcView.postInvalidateScaled(inval.left, inval.top, inval.right, inval.bottom);
+            }
+        }
+    }
+
     /**
      * shell_annunciators()
      * Callback invoked by the emulator core to change the state of the display
@@ -1475,9 +1609,24 @@ public class Free42Activity extends Activity {
      * so the shell is expected to handle that one by itself.
      */
     public void shell_annunciators(int updn, int shf, int prt, int run, int g, int rad) {
+        boolean prt_off = false;
+        if (prt != -1) {
+            PrintAnnunciatorTurnerOffer p = pato;
+            pato = null;
+            if (p != null)
+                p.interrupt();
+            if (prt == 0) {
+                prt = -1;
+                prt_off = true;
+            }
+        }
         Rect inval = skin.update_annunciators(updn, shf, prt, run, -1, g, rad);
         if (inval != null)
             calcView.postInvalidateScaled(inval.left, inval.top, inval.right, inval.bottom);
+        if (prt_off) {
+            pato = new PrintAnnunciatorTurnerOffer();
+            pato.start();
+        }
     }
     
     /**
@@ -1559,10 +1708,7 @@ public class Free42Activity extends Activity {
     /**
      * shell_low_battery()
      * Callback to find out if the battery is low. Used to emulate flag 49 and the
-     * battery annunciator, and also taken into account when deciding whether or
-     * not to allow a power-down -- so as long as the shell provides a functional
-     * implementation of shell_low_battery(), it can leave the decision on how to
-     * respond to sysNotifySleepRequestEvent to core_allows_powerdown().
+     * battery annunciator.
      */
     public int shell_low_battery() {
         return low_battery ? 1 : 0;
@@ -1578,21 +1724,30 @@ public class Free42Activity extends Activity {
         finish();
     }
     
+    private class AlwaysOnSetter implements Runnable {
+        private boolean set;
+        public AlwaysOnSetter(boolean set) {
+            this.set = set;
+        }
+        public void run() {
+            if (set)
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else
+                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+    }
+    
     /**
-     * shell_random_seed()
-     * When SEED is invoked with X = 0, the random number generator should be
-     * seeded to a random value; the emulator core calls this function to obtain
-     * it. The shell should construct a double in the range [0, 1) in a random
-     * manner, using the real-time clock or some other source of randomness.
-     * Note that distribution is not very important; the value will only be used to
-     * seed the RNG. What's important that using shell_random_seed() guarantees
-     * that the RNG will be initialized to a different sequence. This matters for
-     * applications like games where you don't want the same sequence of cards
-     * dealt each time.
+     * shell_always_on()
+     * Callback for setting and querying the shell's Continuous On status.
      */
-    public double shell_random_seed() {
-        long t = new Date().getTime();
-        return (t % 1000000000) / 1000000000d;
+    public int shell_always_on(int ao) {
+        int ret = alwaysOn ? 1 : 0;
+        if (ao != -1) {
+            alwaysOn = ao != 0;
+            runOnUiThread(new AlwaysOnSetter(alwaysOn));
+        }
+        return ret;
     }
     
     /**
@@ -1711,6 +1866,16 @@ public class Free42Activity extends Activity {
                 alert("An error occurred while printing to " + ShellSpool.printToGifFileName + ": " + e.getMessage()
                         + "\nPrinting to GIF file disabled.");
             }
+
+            if (printGifFile != null && gif_lines + 9 > ShellSpool.maxGifHeight) {
+                try {
+                    ShellSpool.shell_finish_gif(printGifFile);
+                } catch (IOException e) {}
+                try {
+                    printGifFile.close();
+                } catch (IOException e) {}
+                printGifFile = null;
+            }
         }
     }
     
@@ -1804,6 +1969,11 @@ public class Free42Activity extends Activity {
     private double locat_lat, locat_lon, locat_lat_lon_acc, locat_elev, locat_elev_acc;
     
     public int shell_get_location(DoubleHolder lat, DoubleHolder lon, DoubleHolder lat_lon_acc, DoubleHolder elev, DoubleHolder elev_acc) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            locat_inited = false;
+            ActivityCompat.requestPermissions(this, new String[] { Manifest.permission.ACCESS_FINE_LOCATION }, MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION);
+            return 0;
+        }
         if (!locat_inited) {
             locat_inited = true;
             LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
@@ -1911,5 +2081,19 @@ public class Free42Activity extends Activity {
     
     public void shell_log(String s) {
         System.err.print(s);
+    }
+    
+    public static boolean checkStorageAccess() {
+        return instance.checkStorageAccess2();
+    }
+    
+    private boolean checkStorageAccess2() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+            if (android.os.Build.VERSION.SDK_INT >= 19 /* KitKat; 4.4 */)
+                new File(MY_STORAGE_DIR).mkdirs();
+            return true;
+        }
+        ActivityCompat.requestPermissions(this, new String[] { Manifest.permission.WRITE_EXTERNAL_STORAGE }, MY_PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION);
+        return false;
     }
 }

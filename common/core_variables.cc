@@ -1,6 +1,6 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
- * Copyright (C) 2004-2016  Thomas Okken
+ * Copyright (C) 2004-2019  Thomas Okken
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -103,6 +103,10 @@ vartype *new_string(const char *text, int length) {
 }
 
 vartype *new_realmatrix(int4 rows, int4 columns) {
+    double d_bytes = ((double) rows) * ((double) columns) * sizeof(phloat);
+    if (((double) (int4) d_bytes) != d_bytes)
+        return NULL;
+
     vartype_realmatrix *rm = (vartype_realmatrix *)
                                         malloc(sizeof(vartype_realmatrix));
     if (rm == NULL)
@@ -141,6 +145,10 @@ vartype *new_realmatrix(int4 rows, int4 columns) {
 }
 
 vartype *new_complexmatrix(int4 rows, int4 columns) {
+    double d_bytes = ((double) rows) * ((double) columns) * sizeof(phloat) * 2;
+    if (((double) (int4) d_bytes) != d_bytes)
+        return NULL;
+
     vartype_complexmatrix *cm = (vartype_complexmatrix *)
                                         malloc(sizeof(vartype_complexmatrix));
     if (cm == NULL)
@@ -406,25 +414,9 @@ void store_var(const char *name, int namelength, vartype *value) {
         for (i = 0; i < namelength; i++)
             vars[varindex].name[i] = name[i];
     } else {
-        if (matedit_mode != 0 &&
-                string_equals(name, namelength, matedit_name, matedit_length)) {
-            /* We're replacing the indexed matrix; need to reset I and J */
-            /* TODO: proper handling of modes 2 and 3 (edit & editn); this code
-             * really only takes care of the mode 1 case, because it does not
-             * deal with the contents of X, nor with leaving the editor if the
-             * replacement value is not a matrix (or is that forbidden? Maybe
-             * that should cause a "Restricted Operation" error... And that
-             * means I'll have to fix store_var() so that it returns an error
-             * code -- which it should anyway; right now it does not check for
-             * memory allocation failure when growing the variables array, and
-             * that is evil).
-             */
-            if (value->type == TYPE_REALMATRIX
-                        || value->type == TYPE_COMPLEXMATRIX)
-                matedit_i = matedit_j = 0;
-            else
-                matedit_mode = 0;
-        }
+        if (matedit_mode == 1 &&
+                string_equals(name, namelength, matedit_name, matedit_length))
+            matedit_i = matedit_j = 0;
         free_vartype(vars[varindex].value);
     }
     vars[varindex].value = value;
