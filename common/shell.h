@@ -1,6 +1,8 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
  * Copyright (C) 2004-2019  Thomas Okken
+ * EBML state file format
+ * Copyright (C) 2018-2019  Jean-Christophe Hessemann
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -89,6 +91,24 @@ void shell_delay(int duration);
  * This function supports the delay after SHOW, MEM, and shift-VARMENU.
  */
 void shell_request_timeout3(int delay);
+
+/* shell_fseek()
+ *
+ * Callback to seek to some position in file
+ */
+int4 shell_fseek(int4 offset, int mode);
+
+/* shell_ftell()
+ *
+ * Callback to get current position in file
+ */
+int4 shell_ftell();
+
+/* shell_fsize()
+ *
+ * Callback to get current position in file
+ */
+int4 shell_fsize();
 
 /* shell_read_saved_state()
  *

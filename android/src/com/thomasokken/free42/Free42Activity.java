@@ -1,6 +1,8 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
  * Copyright (C) 2004-2019  Thomas Okken
+ * EBML state file format
+ * Copyright (C) 2018-2019  Jean-Christophe Hessemann                                        
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -121,8 +123,8 @@ public class Free42Activity extends Activity {
     private SoundPool soundPool;
     private int[] soundIds;
     
-    // Streams for reading and writing the state file
-    private InputStream stateFileInputStream;
+    // Random file for reading and Streams for writing the state file
+    private RandomAccessFile stateFileInput;
     private OutputStream stateFileOutputStream;
     
     // Streams for program import and export
@@ -140,6 +142,7 @@ public class Free42Activity extends Activity {
     private BroadcastReceiver lowBatteryReceiver;
 
     // Persistent state
+    private String stateFile;
     private int orientation = 0; // 0=portrait, 1=landscape
     private String[] skinName = new String[] { builtinSkinNames[0], builtinSkinNames[0] };
     private String[] externalSkinName = new String[2];
@@ -167,23 +170,33 @@ public class Free42Activity extends Activity {
         super.onCreate(savedInstanceState);
         instance = this;
         
-        int init_mode;
+        int init_mode = 0x8000;
         IntHolder version = new IntHolder();
+        nativeInit();       
+        stateFile = "state.ebml";
+        // ebml state file
         try {
-            stateFileInputStream = openFileInput("state");
+            stateFileInput = new RandomAccessFile (getFileStreamPath(stateFile), "r");
+            init_mode = read_shell_ebml_state(version);
         } catch (FileNotFoundException e) {
-            stateFileInputStream = null;
+            stateFileInput = null;
         }
-        if (stateFileInputStream != null) {
-            if (read_shell_state(version))
-                init_mode = 1;
-            else {
+        // classic text file
+        if (stateFileInput == null) {
+            try {
+                stateFileInput = new RandomAccessFile (getFileStreamPath("state"), "r");
+            } catch (FileNotFoundException e) {}
+            if (stateFileInput != null) {
+                if (read_shell_state(version)) {
+                    init_mode = 0x0000;
+                } else {
+                    init_shell_state(-1);
+                    init_mode = 0xff00;
+                }
+            } else {
                 init_shell_state(-1);
-                init_mode = 2;
+                init_mode = 0xf000;
             }
-        } else {
-            init_shell_state(-1);
-            init_mode = 0;
         }
         setAlwaysRepaintFullDisplay(alwaysRepaintFullDisplay);
         if (alwaysOn)
@@ -229,13 +242,12 @@ public class Free42Activity extends Activity {
         }
         calcView.updateScale();
 
-        nativeInit();
         core_init(init_mode, version.value);
-        if (stateFileInputStream != null) {
+        if (stateFileInput != null) {
             try {
-                stateFileInputStream.close();
+                stateFileInput.close();
             } catch (IOException e) {}
-            stateFileInputStream = null;
+            stateFileInput = null;
         }
         
         lowBatteryReceiver = new BroadcastReceiver() {
@@ -311,6 +323,7 @@ public class Free42Activity extends Activity {
         if (stateFileOutputStream != null) {
             write_shell_state();
             core_enter_background();
+            shell_ebml_writeEod();
         }
         if (stateFileOutputStream != null) {
             try {
@@ -321,7 +334,7 @@ public class Free42Activity extends Activity {
         }
         if (stateFileOutputStream != null) {
             // Writing state file succeeded; rename state.new to state
-            stateFile.renameTo(new File(filesDir, "state"));
+            stateFile.renameTo(new File(filesDir, "state.ebml"));
             stateFileOutputStream = null;
         } else {
             // Writing state file failed; delete state.new, if it even exists
@@ -400,7 +413,7 @@ public class Free42Activity extends Activity {
         calcView.invalidate();
         core_repaint_display();
     }
-    
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         // ignore
@@ -1188,7 +1201,50 @@ public class Free42Activity extends Activity {
     ////////////////////////////////////////////////////////////////////
     ///// This section is where all the real 'shell' work is done. /////
     ////////////////////////////////////////////////////////////////////
-    
+
+    private int read_shell_ebml_state(IntHolder version) {
+        int init_shell_mode = 0x8000;
+        version.value = 0;
+        try {
+            shell_ebml_getShellDocument();
+            version.value = shell_ebml_getEl(FREE42_ShellVersion());
+            if (shell_ebml_getEl(FREE42_ShellReadVersion()) <= SHELL_VERSION) {
+                String s = shell_ebml_readStr(FREE42_ShellOs());
+                if (s.equals("Android")) {
+                    ShellSpool.printToGif = shell_ebml_readBool(FREE42_ShellPrintToGif());
+                    ShellSpool.printToGifFileName = shell_ebml_readStr(FREE42_ShellPrintToGifFileName());
+                    ShellSpool.printToTxt = shell_ebml_readBool(FREE42_ShellPrintToTxt());
+                    ShellSpool.printToTxtFileName = shell_ebml_readStr(FREE42_ShellPrintToTxtFileName());
+                    ShellSpool.maxGifHeight = shell_ebml_readInt(FREE42_ShellPrintMaxGifHeight());
+                    skinName[0] = shell_ebml_readStr(FREE42_ShellAndroidSkinName0());
+                    externalSkinName[0] = shell_ebml_readStr(FREE42_ShellAndroidExtSkinName0());
+                    skinName[1] = shell_ebml_readStr(FREE42_ShellAndroidSkinName1());
+                    externalSkinName[1] = shell_ebml_readStr(FREE42_ShellAndroidExtSkinName1());
+                    keyClicksEnabled = shell_ebml_readBool(FREE42_ShellAndroidKeyClickEn());
+                    preferredOrientation = shell_ebml_readInt(FREE42_ShellAndroidPrefOrient());
+                    skinSmoothing[0] = shell_ebml_readBool(FREE42_ShellAndroidSkinSmooth0());
+                    displaySmoothing[0] = shell_ebml_readBool(FREE42_ShellAndroidDispSmooth0());
+                    skinSmoothing[1] = shell_ebml_readBool(FREE42_ShellAndroidSkinSmooth1());
+                    displaySmoothing[1] = shell_ebml_readBool(FREE42_ShellAndroidDispSmooth1());
+                    keyVibrationEnabled = shell_ebml_readBool(FREE42_ShellAndroidKeyVibraEn());
+                    style = shell_ebml_readInt(FREE42_ShellAndroidStyle());
+                    init_shell_mode = 0x0001;
+                }
+                else {
+                    init_shell_mode = 0x1001;       // bad OS
+                    version.value = 0;
+                }
+            }
+            else {
+                init_shell_mode = 0x2001;       // bad shell version
+                version.value = 0;
+            }
+                    
+        } catch (Exception e) {}
+        init_shell_state(version.value);
+        return init_shell_mode;
+    }
+
     private boolean read_shell_state(IntHolder version) {
         try {
             if (state_read_int() != FREE42_MAGIC())
@@ -1307,29 +1363,29 @@ public class Free42Activity extends Activity {
 
     private void write_shell_state() {
         try {
-            state_write_int(FREE42_MAGIC());
-            state_write_int(FREE42_VERSION());
-            state_write_int(SHELL_VERSION);
-            state_write_boolean(ShellSpool.printToGif);
-            state_write_string(ShellSpool.printToGifFileName);
-            state_write_boolean(ShellSpool.printToTxt);
-            state_write_string(ShellSpool.printToTxtFileName);
-            state_write_int(ShellSpool.maxGifHeight);
-            state_write_string(skinName[0]);
-            state_write_string(externalSkinName[0]);
-            state_write_string(skinName[1]);
-            state_write_string(externalSkinName[1]);
-            state_write_boolean(keyClicksEnabled);
-            state_write_int(preferredOrientation);
-            state_write_boolean(skinSmoothing[0]);
-            state_write_boolean(displaySmoothing[0]);
-            state_write_boolean(skinSmoothing[1]);
-            state_write_boolean(displaySmoothing[1]);
-            state_write_boolean(keyVibrationEnabled);
-            state_write_int(style);
-            state_write_boolean(alwaysRepaintFullDisplay);
-            state_write_boolean(alwaysOn);
-        } catch (IllegalArgumentException e) {}
+            // write document header
+            shell_ebml_writeShellDocument();
+            // write shell
+            shell_ebml_writeBool(FREE42_ShellPrintToGif(), ShellSpool.printToGif);
+            shell_ebml_writeStr(FREE42_ShellPrintToGifFileName(), ShellSpool.printToGifFileName);
+            shell_ebml_writeBool(FREE42_ShellPrintToTxt(), ShellSpool.printToTxt);
+            shell_ebml_writeStr(FREE42_ShellPrintToTxtFileName(), ShellSpool.printToTxtFileName);
+            shell_ebml_writeInt(FREE42_ShellPrintMaxGifHeight(), ShellSpool.maxGifHeight);
+            shell_ebml_writeStr(FREE42_ShellAndroidSkinName0(), skinName[0]);
+            shell_ebml_writeStr(FREE42_ShellAndroidExtSkinName0(), externalSkinName[0]);
+            shell_ebml_writeStr(FREE42_ShellAndroidSkinName1(), skinName[1]);
+            shell_ebml_writeStr(FREE42_ShellAndroidExtSkinName1(), externalSkinName[1]);
+            shell_ebml_writeBool(FREE42_ShellAndroidKeyClickEn(), keyClicksEnabled);
+            shell_ebml_writeInt(FREE42_ShellAndroidPrefOrient(), preferredOrientation);
+            shell_ebml_writeBool(FREE42_ShellAndroidSkinSmooth0(), skinSmoothing[0]);
+            shell_ebml_writeBool(FREE42_ShellAndroidDispSmooth0(), displaySmoothing[0]);
+            shell_ebml_writeBool(FREE42_ShellAndroidSkinSmooth1(), skinSmoothing[1]);
+            shell_ebml_writeBool(FREE42_ShellAndroidDispSmooth1(), displaySmoothing[1]);
+            shell_ebml_writeBool(FREE42_ShellAndroidKeyVibraEn(), keyVibrationEnabled);
+            shell_ebml_writeInt(FREE42_ShellAndroidStyle(), style);
+            // close document
+            shell_ebml_writeEod();
+        } catch (Exception e) { }
     }
     
     private byte[] int_buf = new byte[4];
@@ -1338,25 +1394,12 @@ public class Free42Activity extends Activity {
             throw new IllegalArgumentException();
         return (int_buf[0] << 24) | ((int_buf[1] & 255) << 16) | ((int_buf[2] & 255) << 8) | (int_buf[3] & 255);
     }
-    private void state_write_int(int i) throws IllegalArgumentException {
-        int_buf[0] = (byte) (i >> 24);
-        int_buf[1] = (byte) (i >> 16);
-        int_buf[2] = (byte) (i >> 8);
-        int_buf[3] = (byte) i;
-        if (!shell_write_saved_state(int_buf))
-            throw new IllegalArgumentException();
-    }
-    
+   
     private byte[] boolean_buf = new byte[1];
     private boolean state_read_boolean() throws IllegalArgumentException {
         if (shell_read_saved_state(boolean_buf) != 1)
             throw new IllegalArgumentException();
         return boolean_buf[0] != 0;
-    }
-    private void state_write_boolean(boolean b) throws IllegalArgumentException {
-        boolean_buf[0] = (byte) (b ? 1 : 0);
-        if (!shell_write_saved_state(boolean_buf))
-            throw new IllegalArgumentException();
     }
     
     private String state_read_string() throws IllegalArgumentException {
@@ -1370,17 +1413,6 @@ public class Free42Activity extends Activity {
             // Won't happen; UTF-8 is always supported.
             return null;
         }
-    }
-    private void state_write_string(String s) throws IllegalArgumentException {
-        byte[] buf;
-        try {
-            buf = s.getBytes("UTF-8");
-        } catch (UnsupportedEncodingException e) {
-            // Won't happen; UTF-8 is always supported.
-            throw new IllegalArgumentException();
-        }
-        state_write_int(buf.length);
-        shell_write_saved_state(buf);
     }
 
     private class CoreThread extends Thread {
@@ -1468,10 +1500,31 @@ public class Free42Activity extends Activity {
 
     //////////////////////////////////////////////////////////////////////////
     ///// Stubs for accessing the FREE42_MAGIC and FREE42_VERSION macros /////
+    ///// and some more ebml macros                                      /////
     //////////////////////////////////////////////////////////////////////////
     
     private native int FREE42_MAGIC();
     private native int FREE42_VERSION();
+    private native int FREE42_ShellVersion();
+    private native int FREE42_ShellReadVersion();
+    private native int FREE42_ShellOs();
+    private native int FREE42_ShellPrintToGif();
+    private native int FREE42_ShellPrintToGifFileName();
+    private native int FREE42_ShellPrintToTxt();
+    private native int FREE42_ShellPrintToTxtFileName();
+    private native int FREE42_ShellPrintMaxGifHeight();
+    private native int FREE42_ShellAndroidSkinName0();
+    private native int FREE42_ShellAndroidExtSkinName0();
+    private native int FREE42_ShellAndroidSkinName1();
+    private native int FREE42_ShellAndroidExtSkinName1();
+    private native int FREE42_ShellAndroidKeyClickEn();
+    private native int FREE42_ShellAndroidPrefOrient();
+    private native int FREE42_ShellAndroidSkinSmooth0();
+    private native int FREE42_ShellAndroidDispSmooth0();
+    private native int FREE42_ShellAndroidSkinSmooth1();
+    private native int FREE42_ShellAndroidDispSmooth1();
+    private native int FREE42_ShellAndroidKeyVibraEn();
+    private native int FREE42_ShellAndroidStyle();
     
     ///////////////////////////////////////////
     ///// Stubs for shell->core interface /////
@@ -1479,6 +1532,18 @@ public class Free42Activity extends Activity {
     
     private native void nativeInit();
     private native void core_keydown_finish();
+    
+    private native void shell_ebml_getShellDocument();
+    private native int shell_ebml_getEl(int elId); 
+    private native boolean shell_ebml_readBool(int elId);
+    private native int shell_ebml_readInt(int elId);
+    private native String shell_ebml_readStr(int elId);
+    private native void shell_ebml_writeShellDocument();
+    private native void shell_ebml_writeVInt(int elId, long i);
+    private native void shell_ebml_writeBool(int elId, boolean b);
+    private native void shell_ebml_writeInt(int elId, int i);
+    private native void shell_ebml_writeStr(int elId, String str);
+    private native void shell_ebml_writeEod();
     
     private native void core_init(int read_state, int version);
     private native void core_enter_background();
@@ -1642,6 +1707,108 @@ public class Free42Activity extends Activity {
     }
     
     /**
+     * shell_fseek()
+     *
+     * Callback to seek saved state.
+     * 
+     */
+    public int shell_fseek(int offset, int mode) {
+        int n = -1;
+        if (stateFileInput == null) {
+            return n;
+        }
+        try {
+            if (mode == 0) {
+                // SEEK_SET
+                stateFileInput.seek(offset);
+                n = 0;
+                }
+            else if (mode == 1) {
+                // SEEK_CUR
+                n = (int) stateFileInput.getFilePointer();
+                if (n <= 0) {
+                    shell_log("shell_fseek 1");
+                    stateFileInput.close();
+                    stateFileInput = null;
+                    n = -1;
+                }
+                else {
+                    stateFileInput.seek(n + offset);
+                    n = 0;
+                }
+            }   
+            else if (mode == -1) {
+                // SEEK_END, not implemented, yet.
+            }
+        } catch (IOException e) {
+            try {
+                stateFileInput.close();
+            } catch (IOException e2) {}
+            shell_log("shell_fseek 2");
+            stateFileInput = null;
+            n = -1;
+        }
+        return n;
+    }
+
+    /**
+     * shell_ftell()
+     *
+     * Callback to get current offset.
+     * 
+     */
+    public int shell_ftell() {
+        int n;
+        if (stateFileInput == null)
+            return -1;
+        try {
+            n = (int) stateFileInput.getFilePointer();
+            if (n < 0) {
+                shell_log("shell_ftell 1");
+                stateFileInput.close();
+                stateFileInput = null;
+            }
+        } catch (IOException e) {
+            try {
+                stateFileInput.close();
+            } catch (IOException e2) {}
+            shell_log("shell_ftell 2");
+            stateFileInput = null;
+            n = -1;
+        }
+        return n;
+    }
+
+    /**
+     * shell_fsize()
+     *
+     * Callback to seek file size.
+     * 
+     */
+    public int shell_fsize() {
+        int n;
+        if (stateFileInput == null)
+            return -1;
+        try {
+            n = (int) stateFileInput.length();
+            if (n <= 0) {
+                shell_log("shell_fsize 1");
+                stateFileInput.close();
+                stateFileInput = null;
+                return 0;
+            } 
+        } catch (IOException e) {
+            try {
+                stateFileInput.close();
+            } catch (IOException e2) {}
+            shell_log("shell_fsize 2");
+            stateFileInput = null;
+            n = -1;
+        }
+        return n;
+    }
+
+    /**
      * shell_read_saved_state()
      *
      * Callback to read from the saved state. The function will read up to n
@@ -1654,24 +1821,25 @@ public class Free42Activity extends Activity {
      * always get an error then.)
      */
     public int shell_read_saved_state(byte[] buf) {
-        if (stateFileInputStream == null)
+        int n = -1;
+        if (stateFileInput == null)
             return -1;
         try {
-            int n = stateFileInputStream.read(buf);
+            n = stateFileInput.read(buf);
             if (n <= 0) {
-                stateFileInputStream.close();
-                stateFileInputStream = null;
-                return 0;
-            } else
-                return n;
+                stateFileInput.close();
+                stateFileInput = null;
+            }
         } catch (IOException e) {
             try {
-                stateFileInputStream.close();
+                stateFileInput.close();
             } catch (IOException e2) {}
-            stateFileInputStream = null;
-            return -1;
+            stateFileInput = null;
+            n = -1;
         }
+        return n;
     }
+
     
     /**
      * shell_write_saved_state()

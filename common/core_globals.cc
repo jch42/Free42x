@@ -1,6 +1,8 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
  * Copyright (C) 2004-2019  Thomas Okken
+ * EBML state file format
+ * Copyright (C) 2018-2019  Jean-Christophe Hessemann
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -18,6 +20,7 @@
 #include <stdlib.h>
 
 #include "core_globals.h"
+#include "core_ebml.h"
 #include "core_commands2.h"
 #include "core_commands4.h"
 #include "core_display.h"
@@ -623,6 +626,7 @@ int matedit_mode; /* 0=off, 1=index, 2=edit, 3=editn */
 char matedit_name[7];
 int matedit_length;
 vartype *matedit_x;
+
 int4 matedit_i;
 int4 matedit_j;
 int matedit_prev_appmenu;
@@ -663,6 +667,19 @@ int state_file_number_format;
  */
 bool no_keystrokes_yet;
 
+/*
+ * Incomplete : kcdisvpx
+ * k (13) - kernel/shell
+ * c (14) - core
+ * d (15) - display
+ * i (16) - integer
+ * s (17) - solve
+ * v (18) - variables
+ * p (19) - programs
+ * x (20) - extensions
+ */
+char read_state_status[23] = "Incomplete :         ";
+
 
 /*******************/
 /* Private globals */
@@ -693,7 +710,6 @@ static int array_count;
 static int array_list_capacity;
 static void **array_list;
 
-
 static bool read_int(int *n);
 static bool write_int(int n);
 static bool read_int4(int4 *n);
@@ -703,7 +719,6 @@ static bool write_bool(bool n);
 
 static bool array_list_grow();
 static int array_list_search(void *array);
-static bool persist_vartype(vartype *v);
 static bool unpersist_vartype(vartype **v, bool padded);
 static void update_label_table(int prgm, int4 pc, int inserted);
 static void invalidate_lclbls(int prgm_index, bool force);
@@ -738,101 +753,6 @@ static int array_list_search(void *array) {
             return i;
     return -1;
 }
-
-static bool persist_vartype(vartype *v) {
-    if (v == NULL) {
-        int type = TYPE_NULL;
-        return shell_write_saved_state(&type, sizeof(int));
-    }
-    switch (v->type) {
-        case TYPE_REAL: {
-            if (!shell_write_saved_state(v, sizeof(int)))
-                return false;
-            vartype_real *r = (vartype_real *) v;
-            return shell_write_saved_state(&r->x, sizeof(phloat));
-        }
-        case TYPE_COMPLEX: {
-            if (!shell_write_saved_state(v, sizeof(int)))
-                return false;
-            vartype_complex *c = (vartype_complex *) v;
-            return shell_write_saved_state(&c->re, 2 * sizeof(phloat));
-        }
-        case TYPE_STRING:
-            return shell_write_saved_state(v, sizeof(vartype_string));
-        case TYPE_REALMATRIX: {
-            matrix_persister mp;
-            vartype_realmatrix *rm = (vartype_realmatrix *) v;
-            mp.type = rm->type;
-            mp.rows = rm->rows;
-            mp.columns = rm->columns;
-            int4 size = mp.rows * mp.columns;
-            bool must_write = true;
-            if (rm->array->refcount > 1) {
-                int n = array_list_search(rm->array);
-                if (n == -1) {
-                    // A negative row count signals a new shared matrix
-                    mp.rows = -mp.rows;
-                    if (!array_list_grow())
-                        return false;
-                    array_list[array_count++] = rm->array;
-                } else {
-                    // A zero row count means this matrix shares its data
-                    // with a previously written matrix
-                    mp.rows = 0;
-                    mp.columns = n;
-                    must_write = false;
-                }
-            }
-            if (!shell_write_saved_state(&mp, sizeof(matrix_persister)))
-                return false;
-            if (must_write) {
-                if (!shell_write_saved_state(rm->array->data,
-                                            size * sizeof(phloat)))
-                    return false;
-                if (!shell_write_saved_state(rm->array->is_string, size))
-                    return false;
-            }
-            return true;
-        }
-        case TYPE_COMPLEXMATRIX: {
-            matrix_persister mp;
-            vartype_complexmatrix *cm = (vartype_complexmatrix *) v;
-            mp.type = cm->type;
-            mp.rows = cm->rows;
-            mp.columns = cm->columns;
-            int4 size = mp.rows * mp.columns;
-            bool must_write = true;
-            if (cm->array->refcount > 1) {
-                int n = array_list_search(cm->array);
-                if (n == -1) {
-                    // A negative row count signals a new shared matrix
-                    mp.rows = -mp.rows;
-                    if (!array_list_grow())
-                        return false;
-                    array_list[array_count++] = cm->array;
-                } else {
-                    // A zero row count means this matrix shares its data
-                    // with a previously written matrix
-                    mp.rows = 0;
-                    mp.columns = n;
-                    must_write = false;
-                }
-            }
-            if (!shell_write_saved_state(&mp, sizeof(matrix_persister)))
-                return false;
-            if (must_write) {
-                if (!shell_write_saved_state(cm->array->data,
-                                            2 * size * sizeof(phloat)))
-                    return false;
-            }
-            return true;
-        }
-        default:
-            /* Should not happen */
-            return true;
-    }
-}
-
 
 // A few declarations to help unpersist_vartype get the offsets right,
 // in the case it needs to convert the state file.
@@ -1116,90 +1036,6 @@ static bool unpersist_vartype(vartype **v, bool padded) {
         default:
             return false;
     }
-}
-
-static bool persist_globals() {
-    int i;
-    array_count = 0;
-    array_list_capacity = 0;
-    array_list = NULL;
-    bool ret = false;
-
-    if (!persist_vartype(reg_x))
-        goto done;
-    if (!persist_vartype(reg_y))
-        goto done;
-    if (!persist_vartype(reg_z))
-        goto done;
-    if (!persist_vartype(reg_t))
-        goto done;
-    if (!persist_vartype(reg_lastx))
-        goto done;
-    if (!write_int(reg_alpha_length))
-        goto done;
-    if (!shell_write_saved_state(reg_alpha, 44))
-        goto done;
-    if (!write_int4(mode_sigma_reg))
-        goto done;
-    if (!write_int(mode_goose))
-        goto done;
-    if (!write_bool(mode_time_clktd))
-        goto done;
-    if (!write_bool(mode_time_clk24))
-        goto done;
-    if (!shell_write_saved_state(&flags, sizeof(flags_struct)))
-        goto done;
-    if (!write_int(vars_count))
-        goto done;
-    for (i = 0; i < vars_count; i++)
-        if (!shell_write_saved_state(vars + i, sizeof(var_struct_32bit)))
-            goto done;
-    for (i = 0; i < vars_count; i++)
-        if (!persist_vartype(vars[i].value))
-            goto done;
-    if (!write_int(prgms_count))
-        goto done;
-    for (i = 0; i < prgms_count; i++)
-        if (!shell_write_saved_state(prgms + i, sizeof(prgm_struct_32bit)))
-            goto done;
-    for (i = 0; i < prgms_count; i++)
-        if (!shell_write_saved_state(prgms[i].text, prgms[i].size))
-            goto done;
-    if (!write_int(current_prgm))
-        goto done;
-    if (!write_int4(pc))
-        goto done;
-    if (!write_int(prgm_highlight_row))
-        goto done;
-    if (!write_int(varmenu_length))
-        goto done;
-    if (!shell_write_saved_state(varmenu, 7))
-        goto done;
-    if (!write_int(varmenu_rows))
-        goto done;
-    if (!write_int(varmenu_row))
-        goto done;
-    if (!shell_write_saved_state(varmenu_labellength, 6 * sizeof(int)))
-        goto done;
-    if (!shell_write_saved_state(varmenu_labeltext, 42))
-        goto done;
-    if (!write_int(varmenu_role))
-        goto done;
-    if (!write_int(rtn_sp))
-        goto done;
-    if (!shell_write_saved_state(&rtn_prgm, MAX_RTNS * sizeof(int)))
-        goto done;
-    if (!shell_write_saved_state(&rtn_pc, MAX_RTNS * sizeof(int4)))
-        goto done;
-#ifdef IPHONE
-    if (!write_bool(off_enable_flag))
-        goto done;
-#endif
-    ret = true;
-
-    done:
-    free(array_list);
-    return ret;
 }
 
 static bool unpersist_globals(int4 ver) {
@@ -1789,6 +1625,11 @@ static void update_label_table(int prgm, int4 pc, int inserted) {
     }
 }
 
+/* 
+ * Invalidate local labels
+ * Erase all local targets of current prgm
+ * They will have to be calculated afterward
+ */
 static void invalidate_lclbls(int prgm_index, bool force) {
     prgm_struct *prgm = prgms + prgm_index;
     if (force || !prgm->lclbl_invalid) {
@@ -2046,6 +1887,117 @@ void store_command_after(int4 *pc, int command, arg_struct *arg) {
     store_command(*pc, command, arg);
 }
 
+/*
+ * stripped down store command when not interactive
+ */
+void store_command_simple(int4 *pc, int command, arg_struct *arg) {
+    unsigned char buf[100];
+    int bufptr = 0;
+    int i;
+    int4 pos;
+    prgm_struct *prgm = prgms + current_prgm;
+
+    /* We should never be called with pc = -1, but just to be safe... */
+    if (*pc == -1) {
+        *pc = 0;
+    }
+    if (arg->type == ARGTYPE_NUM && arg->val.num < 0) {
+        arg->type = ARGTYPE_NEG_NUM;
+        arg->val.num = -arg->val.num;
+    }
+    else if (command == CMD_NUMBER) {
+        /* arg.type is always ARGTYPE_DOUBLE for CMD_NUMBER, but for storage
+         * efficiency, we handle integers specially and store them as
+         * ARGTYPE_NUM or ARGTYPE_NEG_NUM instead.
+         */
+        int4 n = to_int4(arg->val_d);
+        if (n == arg->val_d && n != (int4) 0x80000000) {
+            if (n >= 0) {
+                arg->val.num = n;
+                arg->type = ARGTYPE_NUM;
+            } else {
+                arg->val.num = -n;
+                arg->type = ARGTYPE_NEG_NUM;
+            }
+        }
+    }
+    else if (arg->type == ARGTYPE_LBLINDEX) {
+        int li = arg->val.num;
+        arg->length = labels[li].length;
+        for (i = 0; i < arg->length; i++) {
+            arg->val.text[i] = labels[li].name[i];
+        }
+        arg->type = ARGTYPE_STR;
+    }
+
+    buf[bufptr++] = command & 255;
+    buf[bufptr++] = arg->type | ((command & ~255) >> 4);
+
+    if ((command == CMD_GTO || command == CMD_XEQ) && (arg->type == ARGTYPE_NUM || arg->type == ARGTYPE_LCLBL)) {
+        // reset lbl pc to -1
+        for (i = 0; i < 4; i++) {
+            buf[bufptr++] = 255;
+        }
+    }
+
+    switch (arg->type) {
+        case ARGTYPE_NUM:
+        case ARGTYPE_NEG_NUM:
+        case ARGTYPE_IND_NUM: {
+            int4 num = arg->val.num;
+            char tmpbuf[5];
+            int tmplen = 0;
+            while (num > 127) {
+                tmpbuf[tmplen++] = num & 127;
+                num >>= 7;
+            }
+            tmpbuf[tmplen++] = num;
+            tmpbuf[0] |= 128;
+            while (--tmplen >= 0)
+                buf[bufptr++] = tmpbuf[tmplen];
+            break;
+        }
+        case ARGTYPE_STK:
+        case ARGTYPE_IND_STK:
+            buf[bufptr++] = arg->val.stk;
+            break;
+        case ARGTYPE_STR:
+        case ARGTYPE_IND_STR: {
+            buf[bufptr++] = arg->length;
+            for (i = 0; i < arg->length; i++)
+                buf[bufptr++] = arg->val.text[i];
+            break;
+        }
+        case ARGTYPE_LCLBL:
+            buf[bufptr++] = arg->val.lclbl;
+            break;
+        case ARGTYPE_DOUBLE: {
+            unsigned char *b = (unsigned char *) &arg->val_d;
+            for (int i = 0; i < (int) sizeof(phloat); i++)
+                buf[bufptr++] = *b++;
+            break;
+        }
+    }
+
+    if (bufptr + prgm->size > prgm->capacity) {
+        unsigned char *newtext;
+        prgm->capacity += 512;
+        newtext = (unsigned char *) malloc(prgm->capacity);
+        // TODO - handle memory allocation failure
+        for (pos = 0; pos < *pc; pos++) {
+            newtext[pos] = prgm->text[pos];
+        }
+        if (prgm->text != NULL) {
+            free(prgm->text);
+        }
+        prgm->text = newtext;
+    }
+    for (pos = 0; pos < bufptr; pos++) {
+        prgm->text[(*pc)++] = buf[pos];
+    }
+    prgm->size += bufptr;
+}
+
 static int pc_line_convert(int4 loc, int loc_is_pc) {
     int4 pc = 0;
     int4 line = 1;
@@ -2223,24 +2175,12 @@ static bool read_int(int *n) {
     return shell_read_saved_state(n, sizeof(int)) == sizeof(int);
 }
 
-static bool write_int(int n) {
-    return shell_write_saved_state(&n, sizeof(int));
-}
-
 static bool read_int4(int4 *n) {
     return shell_read_saved_state(n, sizeof(int4)) == sizeof(int4);
 }
 
-static bool write_int4(int4 n) {
-    return shell_write_saved_state(&n, sizeof(int4));
-}
-
 static bool read_int8(int8 *n) {
     return shell_read_saved_state(n, sizeof(int8)) == sizeof(int8);
-}
-
-static bool write_int8(int8 n) {
-    return shell_write_saved_state(&n, sizeof(int8));
 }
 
 static bool read_bool(bool *b) {
@@ -2255,10 +2195,6 @@ static bool read_bool(bool *b) {
     } else {
         return shell_read_saved_state(b, sizeof(bool)) == sizeof(bool);
     }
-}
-
-static bool write_bool(bool b) {
-    return shell_write_saved_state(&b, sizeof(bool));
 }
 
 bool read_phloat(phloat *d) {
@@ -2286,8 +2222,868 @@ bool read_phloat(phloat *d) {
     }
 }
 
-bool write_phloat(phloat d) {
-    return shell_write_saved_state(&d, sizeof(phloat));
+bool load_ebml_core(int4 ver) {
+    int4 version;
+    ebmlElement_Struct el;
+    int i, len, sz, err;
+    int n1 = 0, n2 = 0;
+    var_struct v;
+    bool soFar_soGood;
+
+    /* 
+     * The shell as checked the master documents version
+     * and - possibly - loaded the shell state,
+     * before we got called.
+     */
+
+    // go back to global master document
+    el.docId = 0;
+    el.elId = EBMLFree42;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlNoMasterError;
+    }
+    // use global master document
+    el.docId = el.elId;
+    el.docLen = el.elLen;
+    el.docFirstEl = el.pos;
+    // open core document
+    el.elId = EBMLFree42Core;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlNoCoreError;
+    }
+    // use core document
+    el.docId = el.elId;
+    el.docLen = el.elLen;
+    el.docFirstEl = el.pos;
+
+    // get version
+    el.elId = EBMLFree42CoreVersion;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlCoreVersionError;
+    }
+    version = el.elLen;
+    // get read version
+    el.elId = EBMLFree42CoreReadVersion;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlCoreVersionError;
+    }
+    // read version compatibility ?
+    if (el.elLen > _EBMLFree42CoreVersion) {
+        goto ebmlCoreVersionError;
+    }
+
+    err = 0;
+
+    // read core settings
+    el.elId = EL_core_matrix_singular;
+    if (!ebmlReadElBool(&el, &core_settings.matrix_singularmatrix)) {
+        core_settings.matrix_singularmatrix = false;
+        err++;
+    }
+    el.elId = EL_core_matrix_outofrange;
+    if (!ebmlReadElBool(&el, &core_settings.matrix_outofrange)) {
+        core_settings.matrix_outofrange = false;
+        err++;
+    }
+    el.elId = EL_core_auto_repeat;
+    if (!ebmlReadElBool(&el, &core_settings.auto_repeat)) {
+        core_settings.auto_repeat = false;
+        err++;
+    }
+    // read core modes
+    el.elId = EL_mode_clall;
+    if (!ebmlReadElBool(&el, &mode_clall)) {
+        mode_clall = false;
+        err++;
+    }
+    el.elId = EL_mode_command_entry;
+    if (!ebmlReadElBool(&el, &mode_command_entry)) {
+        mode_command_entry = false;
+        err++;
+    }
+    el.elId = EL_mode_number_entry;
+    if (!ebmlReadElBool(&el, &mode_number_entry)) {
+        mode_number_entry = false;
+        err++;
+    }
+    el.elId = EL_mode_alpha_entry;
+    if (!ebmlReadElBool(&el, &mode_alpha_entry)) {
+        mode_alpha_entry = false;
+        err++;
+    }
+    el.elId = EL_mode_shift;
+    if (!ebmlReadElBool(&el, &mode_shift)) {
+        mode_shift = false;
+        err++;
+    }
+    el.elId = EL_mode_appmenu;
+    if (!ebmlReadElInt(&el, &mode_appmenu)) {
+        mode_appmenu = MENU_NONE;
+        err++;
+    }
+    el.elId = EL_mode_plainmenu;
+    if (!ebmlReadElInt(&el, &mode_plainmenu)) {
+        mode_plainmenu = MENU_NONE;
+        err++;
+    }
+    el.elId = EL_mode_plainmenu_sticky;
+    if (!ebmlReadElBool(&el, &mode_plainmenu_sticky)) {
+        mode_plainmenu_sticky = false;
+        err++;
+    }
+    el.elId = EL_mode_transientmenu;
+    if (!ebmlReadElInt(&el, &mode_transientmenu)) {
+        mode_transientmenu = MENU_NONE;
+        err++;
+    }
+    el.elId = EL_mode_alphamenu;
+    if (!ebmlReadElInt(&el, &mode_alphamenu)) {
+        mode_alphamenu = MENU_NONE;
+        err++;
+    }
+    el.elId = EL_mode_commandmenu;
+    if (!ebmlReadElInt(&el, &mode_commandmenu)) {
+        mode_commandmenu = MENU_NONE;
+        err++;
+    }
+    el.elId = EL_mode_running;
+    if (!ebmlReadElBool(&el, &mode_running)) {
+        mode_running = false;
+        err++;
+    }
+    el.elId = EL_mode_varmenu;
+    if (!ebmlReadElBool(&el, &mode_varmenu)) {
+        mode_varmenu = false;
+        err++;
+    }
+    el.elId = EL_mode_updown;
+    if (!ebmlReadElBool(&el, &mode_updown)) {
+        mode_updown = false;
+        err++;
+    }
+    el.elId = EL_mode_getkey;
+    if (!ebmlReadElBool(&el, &mode_getkey)) {
+        mode_getkey = false;
+        err++;
+    }
+
+    el.elId = EL_entered_number;
+    if (!ebmlReadElPhloat(&el, &entered_number)) {
+        entered_number = 0;
+        err++;
+    }
+    el.elId = EL_entered_string;
+    entered_string_length = sizeof(entered_string);
+    if (!ebmlReadElString(&el, entered_string, &entered_string_length)) {
+        entered_string_length = 0;
+        err++;
+    }
+    
+    el.elId = EL_pending_command;
+    if (!ebmlReadElInt(&el, &pending_command)) {
+        pending_command = CMD_NONE;
+        err++;
+    }
+    el.elId = EL_pending_command_arg;
+    if (!ebmlReadElArg(&el, &pending_command_arg)) {
+        // safe way ?
+        pending_command = CMD_NONE;
+        err++;
+    }
+    el.elId = EL_xeq_invisible;
+    if (!ebmlReadElInt(&el, &xeq_invisible)) {
+        // safe way ?
+        pending_command = CMD_NONE;
+        err++;
+    }
+
+    el.elId = EL_incomplete_command;
+    if (!ebmlReadElInt(&el, &incomplete_command)) {
+        // safe way ?
+        pending_command = CMD_NONE;
+        err++;
+    }
+    el.elId = EL_incomplete_ind;
+    if (!ebmlReadElInt(&el, &incomplete_ind)) {
+        // safe way ?
+        pending_command = CMD_NONE;
+        err++;
+    }
+    el.elId = EL_incomplete_alpha;
+    if (!ebmlReadElInt(&el, &incomplete_alpha)) {
+        // safe way ?
+        pending_command = CMD_NONE;
+        err++;
+    }
+    el.elId = EL_incomplete_length;
+    if (!ebmlReadElInt(&el, &incomplete_length)) {
+        // safe way ?
+        pending_command = CMD_NONE;
+        err++;
+    }
+    el.elId = EL_incomplete_maxdigits;
+    if (!ebmlReadElInt(&el, &incomplete_maxdigits)) {
+        // safe way ?
+        pending_command = CMD_NONE;
+        err++;
+    }
+    el.elId = EL_incomplete_argtype;
+    if (!ebmlReadElInt(&el, &incomplete_argtype)) {
+        // safe way ?
+        pending_command = CMD_NONE;
+        err++;
+    }
+    el.elId = EL_incomplete_num;
+    if (!ebmlReadElInt(&el, &incomplete_num)) {
+        // safe way ?
+        pending_command = CMD_NONE;
+        err++;
+    }
+    el.elId = EL_incomplete_str;
+    len = sizeof(incomplete_str);
+    if (!ebmlReadElString(&el, incomplete_str, &len)) {
+        // safe way ?
+        pending_command = CMD_NONE;
+        err++;
+    }
+    el.elId = EL_incomplete_saved_pc;
+    if (!ebmlReadElInt(&el, &incomplete_saved_pc)) {
+        incomplete_saved_pc = 0;
+        err++;
+    }
+    el.elId = EL_incomplete_saved_highlight_row;
+    if (!ebmlReadElInt(&el, &incomplete_saved_highlight_row)) {
+        incomplete_saved_highlight_row = 0;
+        err++;
+    }
+
+    el.elId = EL_cmdline;
+    cmdline_length = sizeof(cmdline);
+    if (!ebmlReadElString(&el, cmdline, &cmdline_length)) {
+        cmdline_length = 0;
+        err++;
+    }
+    el.elId = EL_cmdline_row;
+    if (!ebmlReadElInt(&el, &cmdline_row)) {
+        cmdline_row = 0;
+        err++;
+    }
+
+    el.elId = EL_matedit_mode;
+    if (!ebmlReadElInt(&el, &matedit_mode)) {
+        matedit_mode = 0;
+        err++;
+    }
+    el.elId = EL_matedit_name;
+    matedit_length = sizeof(matedit_name);
+    if (!ebmlReadElString(&el, matedit_name, &matedit_length)) {
+        // safe way ?
+        matedit_mode = 0;
+        err++;
+    }
+    v.length = 1;
+    v.name[0] = 'm';
+    if (!ebmlReadVar(&el, &v)) {
+        // safe way ?
+        matedit_mode = 0;
+        err++;
+    }
+    else {
+        matedit_x = v.value;
+    }
+    el.elId = EL_matedit_i;
+    if (!ebmlReadElInt(&el, &matedit_i)) {
+        matedit_i = 0;
+        err++;
+    }
+    el.elId = EL_matedit_j;
+    if (!ebmlReadElInt(&el, &matedit_j)) {
+        matedit_j = 0;
+        err++;
+    }
+    el.elId = EL_matedit_prev_appmenu;
+    if (!ebmlReadElInt(&el, &matedit_prev_appmenu)) {
+        matedit_prev_appmenu = MENU_NONE;
+        err++;
+    }
+
+    el.elId = EL_input_name;
+    input_length = sizeof(input_length);
+    if (!ebmlReadElString(&el, input_name, &input_length)) {
+        input_length = 0;
+        err++;
+    }
+    el.elId = EL_input_arg;
+    if (!ebmlReadElArg(&el, &input_arg)) {
+        // safe way ?
+        input_length = 0;
+        err++;
+    }
+
+    el.elId = EL_baseapp;
+    if (!ebmlReadElInt(&el, &baseapp)) {
+        baseapp = 0;
+        err++;
+    }
+
+    el.elId = EL_random_number1;
+    if (!ebmlReadElInt(&el, &n1)) {
+        err++;
+    }
+    el.elId = EL_random_number2;
+    if (!ebmlReadElInt(&el, &n2)) {
+        err++;
+    }
+    random_number_low = n1 + ((_int64)n2 << 32);
+    el.elId = EL_random_number3;
+    if (!ebmlReadElInt(&el, &n1)) {
+        err++;
+    }
+    el.elId = EL_random_number4;
+    if (!ebmlReadElInt(&el, &n2)) {
+        err++;
+    }
+    random_number_high = n1 + ((_int64)n2 << 32);
+
+    el.elId = EL_deferred_print;
+    if (!ebmlReadElInt(&el, &deferred_print)) {
+        deferred_print = 0;
+        err++;
+    }
+
+    soFar_soGood = true;
+    el.elId = EL_keybuf_head;
+    if (!ebmlReadElInt(&el, &keybuf_head)) {
+        soFar_soGood = false;
+    }
+    el.elId = EL_keybuf_tail;
+    if (soFar_soGood && !ebmlReadElInt(&el, &keybuf_tail)) {
+        soFar_soGood = false;
+    }
+    el.elId = EL_keybuf_sz;
+    if (soFar_soGood && (ebmlGetEl(&el) != 1)) {
+        soFar_soGood = false;
+    }
+    else {
+        sz = el.elLen;
+        for (i = 0; i < 16; i++) {
+            if (i < sz) {
+                el.elId = EL_keybuf;
+                if (soFar_soGood && !ebmlReadElInt(&el, &keybuf[i])) {
+                    soFar_soGood = false;
+                }
+            }
+            else {
+                keybuf[i] = 0;
+            }
+        }
+    }
+    if (!soFar_soGood) {
+        // make sure keybuf is consistent
+        keybuf_head = 0;
+        keybuf_tail = 0;
+        err++;
+    }
+
+    el.elId = EL_mode_sigma_reg;
+    if (!ebmlReadElInt(&el, &mode_sigma_reg)) {
+        mode_sigma_reg = 11;
+        err++;
+    }
+    el.elId = EL_mode_goose;
+    if (!ebmlReadElInt(&el, &mode_goose)) {
+        mode_goose = -1;
+        err++;
+    }
+    el.elId = EL_mode_time_clktd;
+    if (!ebmlReadElBool(&el, &mode_time_clktd)) {
+        mode_time_clktd = false;
+        err++;
+    }
+    el.elId = EL_mode_time_clk24;
+    if (!ebmlReadElBool(&el, &mode_time_clk24)) {
+        mode_time_clk24 = false;
+        err++;
+    }
+    el.elId = EL_flags;
+    len = sizeof(flags_struct);
+    if (!ebmlReadElString(&el, flags.farray, &len) || len != sizeof(flags_struct)) {
+        flags.f.f00 = flags.f.f01 = flags.f.f02 = flags.f.f03 = flags.f.f04 = 0;
+        flags.f.f05 = flags.f.f06 = flags.f.f07 = flags.f.f08 = flags.f.f09 = 0;
+        flags.f.f10 = 0;
+        flags.f.auto_exec = 0;
+        flags.f.double_wide_print = 0;
+        flags.f.lowercase_print = 0;
+        flags.f.f14 = 0;
+        flags.f.trace_print = 0;
+        flags.f.normal_print = 0;
+        flags.f.f17 = flags.f.f18 = flags.f.f19 = flags.f.f20 = 0;
+        flags.f.printer_enable = 0;
+        flags.f.numeric_data_input = 0;
+        flags.f.alpha_data_input = 0;
+        flags.f.range_error_ignore = 0;
+        flags.f.error_ignore = 0;
+        flags.f.audio_enable = 1;
+        /* flags.f.VIRTUAL_custom_menu = 0; */
+        flags.f.decimal_point = shell_decimal_point(); // HP-42S sets this to 1 on hard reset
+        flags.f.thousands_separators = 1;
+        flags.f.stack_lift_disable = 0;
+        flags.f.dmy = 0;
+        flags.f.f32 = flags.f.f33 = 0;
+        flags.f.agraph_control1 = 0;
+        flags.f.agraph_control0 = 0;
+        flags.f.digits_bit3 = 0;
+        flags.f.digits_bit2 = 1;
+        flags.f.digits_bit1 = 0;
+        flags.f.digits_bit0 = 0;
+        flags.f.fix_or_all = 1;
+        flags.f.eng_or_all = 0;
+        flags.f.grad = 0;
+        flags.f.rad = 0;
+        /* flags.f.VIRTUAL_continuous_on = 0; */
+        /* flags.f.VIRTUAL_solving = 0; */
+        /* flags.f.VIRTUAL_integrating = 0; */
+        /* flags.f.VIRTUAL_variable_menu = 0; */
+        /* flags.f.VIRTUAL_alpha_mode = 0; */
+        /* flags.f.VIRTUAL_low_battery = 0; */
+        flags.f.message = 1;
+        flags.f.two_line_message = 0;
+        flags.f.prgm_mode = 0;
+        /* flags.f.VIRTUAL_input = 0; */
+        flags.f.f54 = 0;
+        flags.f.printer_exists = 0;
+        flags.f.lin_fit = 1;
+        flags.f.log_fit = 0;
+        flags.f.exp_fit = 0;
+        flags.f.pwr_fit = 0;
+        flags.f.all_sigma = 1;
+        flags.f.log_fit_invalid = 0;
+        flags.f.exp_fit_invalid = 0;
+        flags.f.pwr_fit_invalid = 0;
+        flags.f.f64 = 0;
+        /* flags.f.VIRTUAL_matrix_editor = 0; */
+        flags.f.grow = 0;
+        flags.f.f67 = 0;
+        flags.f.base_bit0 = 0;
+        flags.f.base_bit1 = 0;
+        flags.f.base_bit2 = 0;
+        flags.f.base_bit3 = 0;
+        flags.f.local_label = 0;
+        flags.f.polar = 0;
+        flags.f.real_result_only = 0;
+        /* flags.f.VIRTUAL_programmable_menu = 0; */
+        flags.f.matrix_edge_wrap = 0;
+        flags.f.matrix_end_wrap = 0;
+        flags.f.f78 = flags.f.f79 = flags.f.f80 = flags.f.f81 = flags.f.f82 = 0;
+        flags.f.f83 = flags.f.f84 = flags.f.f85 = flags.f.f86 = flags.f.f87 = 0;
+        flags.f.f88 = flags.f.f89 = flags.f.f90 = flags.f.f91 = flags.f.f92 = 0;
+        flags.f.f93 = flags.f.f94 = flags.f.f95 = flags.f.f96 = flags.f.f97 = 0;
+        flags.f.f98 = flags.f.f99 = 0;
+        err++;
+    }
+
+    el.elId = EL_current_prgm;
+    if (!ebmlReadElInt(&el, &current_prgm)) {
+        current_prgm = 0;
+        err++;
+    }
+    el.elId = EL_pc;
+    if (!ebmlReadElInt(&el, &pc)) {
+        pc = 0;
+        err++;
+    }
+    el.elId = EL_prgm_highlight_row;
+    if (!ebmlReadElInt(&el, &prgm_highlight_row)) {
+        prgm_highlight_row = 0;
+        err++;
+    }
+
+    el.elId = EL_varmenu;
+    len = sizeof(varmenu);
+    if (!ebmlReadElString(&el, varmenu, &len) || len != sizeof(varmenu)) {
+        varmenu[0] = 0;
+        err++;
+    }
+    // not saved...
+    //el.elId = EL_varmenu_rows;
+    //if (!ebmlReadElInt(&el, &varmenu_rows)) {
+        // Possible temporary minor display glitch ?
+    //    varmenu_rows = 0;
+    //  err++;
+    //}
+    el.elId = EL_varmenu_row;
+    if (!ebmlReadElInt(&el, &varmenu_row)) {
+        varmenu_row = 0;
+        err++;
+    }
+    for (i = 0; i < 6; i++) {
+        el.elId = EL_varmenu_label + (i << 4);
+        varmenu_labellength[i] = 7;
+        if (!ebmlReadElString(&el, varmenu_labeltext[i], &varmenu_labellength[i])) {
+            varmenu_labellength[i] = 0;
+            err++;
+        }
+    }
+    el.elId = EL_varmenu_role;
+    if (!ebmlReadElInt(&el, &varmenu_role)) {
+        varmenu_role = 0;
+        err ++;
+    }
+
+    soFar_soGood = true;
+    el.elId = EL_rtn_sp;
+    if (!ebmlReadElInt(&el, &rtn_sp)) {
+        soFar_soGood = false;
+    }
+    el.elId = EL_rtn_prgm_sz;
+    if (soFar_soGood && (ebmlGetEl(&el) == 1)) {
+        sz = el.elLen;
+        for (i = 0; i < MAX_RTNS; i++) {
+            if (i < sz) {
+                el.elId = EL_rtn_prgm;
+                if (soFar_soGood && !ebmlReadElInt(&el, &rtn_prgm[i])) {
+                    soFar_soGood = false;
+                }
+            }
+            else {
+                rtn_prgm[i] = 0;
+            }
+        }
+    }
+    el.elId = EL_rtn_pc_sz;
+    if (soFar_soGood && (ebmlGetEl(&el) == 1)) {
+        sz = el.elLen;
+        for (i = 0; i < MAX_RTNS; i++) {
+            if (i < sz) {
+                el.elId = EL_rtn_pc;
+                if (soFar_soGood && !ebmlReadElInt(&el, &rtn_pc[i])) {
+                    soFar_soGood = false;
+                }
+            }
+            else {
+                rtn_pc[i] = 0;
+            }
+        }
+    }
+    if (!soFar_soGood) {
+        rtn_sp = 0;
+        rtn_prgm[0] = 0;
+        rtn_pc[0] = 0;
+        err++;
+    }
+
+#ifdef IPHONE
+    el.elId = EL_off_enable_flag;
+    if (!ebmlReadElBool(&el, &off_enable_flag)) {
+        off_enable_flag = false;
+        err++;
+    }
+#endif
+
+    // registers
+    v.length = 1;
+    v.name[0] = 'x';
+    if (ebmlReadVar(&el, &v)) {
+        reg_x = v.value;
+    }
+    else {
+        free_vartype(reg_x);
+        reg_x = new_real(0);
+    }
+    v.length = 1;
+    v.name[0] = 'y';
+    if (ebmlReadVar(&el, &v)) {
+        reg_y = v.value;
+    }
+    else {
+        free_vartype(reg_y);
+        reg_y = new_real(0);
+        err++;
+    }
+    v.length = 1;
+    v.name[0] = 'z';
+    if (ebmlReadVar(&el, &v)) {
+        reg_z = v.value;
+    }
+    else {
+        free_vartype(reg_z);
+        reg_z = new_real(0);
+        err++;
+    }
+    v.length = 1;
+    v.name[0] = 't';
+    if (ebmlReadVar(&el, &v)) {
+        reg_t = v.value;
+    }
+    else {
+        free_vartype(reg_t);
+        reg_t = new_real(0);
+        err++;
+    }
+    v.length = 1;
+    v.name[0] = 'l';
+    if (ebmlReadVar(&el, &v)) {
+        reg_lastx = v.value;
+    }
+    else {
+        free_vartype(reg_lastx);
+        reg_lastx = new_real(0);
+        err++;
+    }
+    // alpha reg
+    reg_alpha_length = sizeof(reg_alpha);
+    if (!ebmlReadAlphaReg(&el, reg_alpha, &reg_alpha_length)) {
+        reg_alpha_length = 0;
+        err++;
+    }
+    if (err != 0) {
+        read_state_status[14] = 'c';
+    }
+    
+    // Solv & Integ
+    unpersist_ebml_math(&el, false);
+    return true;
+
+        ebmlNoMasterError:
+        ebmlNoCoreError:
+        ebmlCoreVersionError:
+    read_state_status[14] = 'C';
+    return false;
+}
+
+bool load_ebml_display(int4 ver) {
+    int4 version;
+    ebmlElement_Struct el;
+
+    // go back to global master document
+    el.docId = 0;
+    el.elId = EBMLFree42;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlNoMasterError;
+    }
+    // use global master document
+    el.docId = el.elId;
+    el.docLen = el.elLen;
+    el.docFirstEl = el.pos;
+    // open display document
+    el.elId = EBMLFree42Display;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlNoDisplayError;
+    }
+    // use display document
+    el.docId = el.elId;
+    el.docLen = el.elLen;
+    el.docFirstEl = el.pos;
+    // get version
+    el.elId = EBMLFree42DisplayVersion;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlDisplayVersionError;
+    }
+    version = el.elLen;
+    // get read version
+    el.elId = EBMLFree42DisplayReadVersion;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlDisplayVersionError;
+    }
+    // read version compatibility ?;
+    if (el.elLen > _EBMLFree42DisplayVersion) {
+        goto ebmlDisplayVersionError;
+    }
+    if (unpersist_ebml_display(&el)) {
+        return true;
+    }
+
+        ebmlNoMasterError:
+        ebmlNoDisplayError:
+        ebmlDisplayVersionError:
+    read_state_status[15] = 'D';
+    clear_display();
+    clear_custom_menu();
+    clear_prgm_menu();
+    return false;
+}
+
+bool load_ebml_vars(int4 ver) {
+    int4 version;
+    ebmlElement_Struct el;
+    int err, i;
+    vartype *regs;
+
+    // go back to global master document
+    el.docId = 0;
+    el.elId = EBMLFree42;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlNoMasterError;
+    }
+    // use global master document
+    el.docId = el.elId;
+    el.docLen = el.elLen;
+    el.docFirstEl = el.pos;
+    // open vars document
+    el.elId = EBMLFree42Vars;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlNoVarError;
+    }
+    // use vars document
+    el.docId = el.elId;
+    el.docLen = el.elLen;
+    el.docFirstEl = el.pos;
+    // get version
+    el.elId = EBMLFree42VarsVersion;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlVarVersionError;
+    }
+    version = el.elLen;
+    // get read version
+    el.elId = EBMLFree42VarsReadVersion;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlVarVersionError;
+    }
+    // read version compatibility ?;
+    if (el.elLen > _EBMLFree42VarsVersion) {
+        goto ebmlVarVersionError;
+    }
+    // get vars count and init
+    el.elId = EBMLFree42VarsCount;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlVarError;
+    }
+    vars_count = el.elLen;
+    vars = (var_struct *) malloc(vars_count * sizeof(var_struct));
+    if (vars == NULL) {
+        vars_count = 0;
+        goto ebmlVarError;
+    }
+    vars_capacity = vars_count;
+    // get vars
+    err = 0;
+    for (i = 0; i < vars_count; i++) {
+        vars[i].length = 0;
+        if (!ebmlReadVar(&el,&vars[i])) {
+            if (vars[i].value != NULL) {
+                // should not occur
+                free_vartype(vars[i].value);
+            }
+            // adjust vars_count
+            vars_count--;
+            i--;
+            err = 1;
+        }
+    }
+    if (err != 0) {
+        if (vars_count == 0) {
+            read_state_status[18] = 'V';
+            regs = new_realmatrix(25, 1);
+            store_var("REGS", 4, regs);
+        }
+        else {
+            read_state_status[18] = 'v';
+        }
+    }
+    return (err == 0);
+
+        ebmlNoMasterError:
+        ebmlNoVarError:
+        ebmlVarVersionError:
+        ebmlVarError:
+    regs = new_realmatrix(25, 1);
+    store_var("REGS", 4, regs);
+    return false;
+}
+
+
+bool load_ebml_progs(int4 ver) {
+    int4 version;
+    ebmlElement_Struct el;
+    int saveCurrent_prgm, savePc, err;
+
+    // go back to global master document
+    el.docId = 0;
+    el.elId = EBMLFree42;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlNoMasterError;
+    }
+    // use global master document
+    el.docId = el.elId;
+    el.docLen = el.elLen;
+    el.docFirstEl = el.pos;
+    // open progs document
+    el.elId = EBMLFree42Progs;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlNoProgError;
+    }
+    // use progs document
+    el.docId = el.elId;
+    el.docLen = el.elLen;
+    el.docFirstEl = el.pos;
+    // get version
+    el.elId = EBMLFree42ProgsVersion;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlProgVersionError;
+    }
+    version = el.elLen;
+    // get read version
+    el.elId = EBMLFree42ProgsReadVersion;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlProgVersionError;
+    }
+    // read version compatibility ?;
+    if (el.elLen > EBMLFree42ProgsVersion) {
+        goto ebmlProgVersionError;
+    }
+    // get progs count and init 
+    el.elId = EBMLFree42ProgsCount;
+    if (ebmlGetEl(&el) != 1) {
+        goto ebmlProgError;
+    }
+    prgms_capacity = el.elLen + 1;
+    prgms = (prgm_struct *) malloc(prgms_capacity * sizeof(prgm_struct));
+    if (prgms == NULL) {
+        prgms_capacity = 0;
+        goto ebmlProgError;
+    }
+    // backup current 
+    saveCurrent_prgm = current_prgm;
+    savePc = pc;
+    // horrible trick to bypass goto_dot_dot smartness
+    unsigned char dummy_prog[2];
+    dummy_prog[0] = CMD_END & 255;
+    dummy_prog[1] = (CMD_END & ~255) >> 4;
+    for (prgms_count = 0; prgms_count < prgms_capacity; prgms_count++) {
+        prgms[prgms_count].capacity = 2;
+        prgms[prgms_count].size = 2;
+        prgms[prgms_count].lclbl_invalid = 1;
+        prgms[prgms_count].text = dummy_prog;
+    }
+    // get programs
+    err = 0;
+    for (current_prgm = 0; current_prgm < prgms_capacity - 1; ) {
+        pc = 0;
+        prgms_count = current_prgm + 2;
+        if (!ebmlReadProgram(&el, &prgms[current_prgm])) {
+            err = 1;
+        }
+    }
+    prgms_count = current_prgm;
+    current_prgm = saveCurrent_prgm;
+    pc = savePc;
+    if (err != 0) {
+        read_state_status[19] = 'p';
+        // keep the stack safe, best place?
+        rtn_sp = 0;
+    }
+    rebuild_label_table();
+    update_catalog();
+    return (err == 0);
+
+        ebmlNoMasterError:
+        ebmlNoProgError:
+        ebmlProgVersionError:
+        ebmlProgError:
+    read_state_status[19] = 'P';
+    // keep the stack safe, best place?
+    rtn_sp = 0;
+    return false;
 }
 
 bool load_state(int4 ver) {
@@ -2360,6 +3156,7 @@ bool load_state(int4 ver) {
         if (!read_bool(&core_settings.enable_ext_heading)) return false;
         if (!read_bool(&core_settings.enable_ext_time)) return false;
     }
+
     #if defined (FREE42_FPTEST)
         core_settings.enable_ext_fptest = true;
     #else
@@ -2504,90 +3301,323 @@ void save_state() {
     /* The shell has written the initial magic and version numbers,
      * and the shell state, before we got called.
      */
-
-    #ifdef BCD_MATH
-        if (!write_bool(true)) return;
-    #else
-        if (!write_bool(false)) return;
-    #endif
-    if (!write_bool(core_settings.matrix_singularmatrix)) return;
-    if (!write_bool(core_settings.matrix_outofrange)) return;
-    if (!write_bool(core_settings.auto_repeat)) return;
-    if (!write_bool(core_settings.enable_ext_accel)) return;
-    if (!write_bool(core_settings.enable_ext_locat)) return;
-    if (!write_bool(core_settings.enable_ext_heading)) return;
-    if (!write_bool(core_settings.enable_ext_time)) return;
-    if (!write_bool(mode_clall)) return;
-    if (!write_bool(mode_command_entry)) return;
-    if (!write_bool(mode_number_entry)) return;
-    if (!write_bool(mode_alpha_entry)) return;
-    if (!write_bool(mode_shift)) return;
-    if (!write_int(mode_appmenu)) return;
-    if (!write_int(mode_plainmenu)) return;
-    if (!write_bool(mode_plainmenu_sticky)) return;
-    if (!write_int(mode_transientmenu)) return;
-    if (!write_int(mode_alphamenu)) return;
-    if (!write_int(mode_commandmenu)) return;
-    if (!write_bool(mode_running)) return;
-    if (!write_bool(mode_varmenu)) return;
-    if (!write_bool(mode_updown)) return;
-    if (!write_bool(mode_getkey)) return;
-
-    if (!write_phloat(entered_number)) return;
-    if (!write_int(entered_string_length)) return;
-    if (!shell_write_saved_state(entered_string, 15)) return;
-
-    if (!write_int(pending_command)) return;
-    if (!write_arg(&pending_command_arg)) return;
-    if (!write_int(xeq_invisible)) return;
-
-    if (!write_int(incomplete_command)) return;
-    if (!write_int(incomplete_ind)) return;
-    if (!write_int(incomplete_alpha)) return;
-    if (!write_int(incomplete_length)) return;
-    if (!write_int(incomplete_maxdigits)) return;
-    if (!write_int(incomplete_argtype)) return;
-    if (!write_int(incomplete_num)) return;
-    if (!shell_write_saved_state(incomplete_str, 7)) return;
-    if (!write_int4(incomplete_saved_pc)) return;
-    if (!write_int4(incomplete_saved_highlight_row)) return;
-
-    if (!shell_write_saved_state(cmdline, 100)) return;
-    if (!write_int(cmdline_length)) return;
-    if (!write_int(cmdline_row)) return;
-
-    if (!write_int(matedit_mode)) return;
-    if (!shell_write_saved_state(matedit_name, 7)) return;
-    if (!write_int(matedit_length)) return;
-    if (!persist_vartype(matedit_x)) return;
-    if (!write_int4(matedit_i)) return;
-    if (!write_int4(matedit_j)) return;
-    if (!write_int(matedit_prev_appmenu)) return;
-
-    if (!shell_write_saved_state(input_name, 11)) return;
-    if (!write_int(input_length)) return;
-    if (!write_arg(&input_arg)) return;
-
-    if (!write_int(baseapp)) return;
-
-    if (!write_int8(random_number_low)) return;
-    if (!write_int8(random_number_high)) return;
-
-    if (!write_int(deferred_print)) return;
-
-    if (!write_int(keybuf_head)) return;
-    if (!write_int(keybuf_tail)) return;
-    if (!shell_write_saved_state(keybuf, 16 * sizeof(int))) return;
-
-    if (!persist_display())
+int i;
+    // core state
+    if (!ebmlWriteCoreDocument()) {
         return;
-    if (!persist_globals())
+    }
+    if (!ebmlWriteElBool(EL_core_matrix_singular, core_settings.matrix_singularmatrix)) {
         return;
-    if (!persist_math())
+    }
+    if (!ebmlWriteElBool(EL_core_matrix_outofrange, core_settings.matrix_outofrange))  {
         return;
+    }
+    if (!ebmlWriteElBool(EL_core_auto_repeat, core_settings.auto_repeat)) {
+        return;
+    }
 
-    if (!write_int4(FREE42_MAGIC)) return;
-    if (!write_int4(FREE42_VERSION)) return;
+    if (!ebmlWriteElBool(EL_mode_clall, mode_clall)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_command_entry, mode_command_entry)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_number_entry, mode_number_entry)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_alpha_entry, mode_alpha_entry)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_shift, mode_shift)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_mode_appmenu, mode_appmenu)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_mode_plainmenu, mode_plainmenu)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_plainmenu_sticky, mode_plainmenu_sticky)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_mode_transientmenu, mode_transientmenu)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_mode_alphamenu, mode_alphamenu)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_mode_commandmenu, mode_commandmenu)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_running, mode_running)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_varmenu, mode_varmenu)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_updown, mode_updown)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_getkey, mode_getkey)) {
+        return;
+    }
+
+    if (!ebmlWriteElPhloat(EL_entered_number, &entered_number)) {
+        return;
+    }
+    if (!ebmlWriteElString(EL_entered_string, entered_string_length, entered_string)) {
+        return;
+    }
+
+    if (!ebmlWriteElInt(EL_pending_command, pending_command)) {
+        return;
+    }
+    if (!ebmlWriteElArg(EL_pending_command_arg, &pending_command_arg)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_xeq_invisible, xeq_invisible)) {
+        return;
+    }
+
+    if (!ebmlWriteElInt(EL_incomplete_command, incomplete_command)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_incomplete_ind, incomplete_ind)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_incomplete_alpha, incomplete_alpha)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_incomplete_length, incomplete_length)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_incomplete_maxdigits, incomplete_maxdigits)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_incomplete_argtype, incomplete_argtype)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_incomplete_num, incomplete_num)) {
+        return;
+    }
+    if (!ebmlWriteElString(EL_incomplete_str, 7, incomplete_str)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_incomplete_saved_pc, incomplete_saved_pc)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_incomplete_saved_highlight_row, incomplete_saved_highlight_row)) {
+        return;
+    }
+
+    if (!ebmlWriteElString(EL_cmdline, cmdline_length, cmdline)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_cmdline_row, cmdline_row)) {
+        return;
+    }
+
+    if (!ebmlWriteElInt(EL_matedit_mode, matedit_mode)) {
+        return;
+    }
+    if (!ebmlWriteElString(EL_matedit_name, matedit_length, matedit_name)) {
+        return;
+    }
+    if (!ebmlWriteReg(matedit_x,'m')) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_matedit_i, matedit_i)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_matedit_j, matedit_j)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_matedit_prev_appmenu, matedit_prev_appmenu)) {
+        return;
+    }
+
+    if (!ebmlWriteElString(EL_input_name, input_length, input_name)) {
+        return;
+    }
+    if (!ebmlWriteElArg(EL_input_arg, &input_arg)) {
+        return;
+    }
+
+    if (!ebmlWriteElInt(EL_baseapp, baseapp)) {
+        return;
+    }
+
+    if (!ebmlWriteElInt(EL_random_number1 , (int)(random_number_low & 0xffff))) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_random_number2 , (int)((random_number_low >> 32) & 0xffff))) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_random_number3 , (int)(random_number_high & 0xffff))) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_random_number4 , (int)((random_number_high >> 32) & 0xffff))) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_deferred_print, deferred_print)) {
+        return;
+    }
+
+    if (!ebmlWriteElInt(EL_keybuf_head, keybuf_head)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_keybuf_tail, keybuf_tail)) {
+        return;
+    }
+    if (!ebmlWriteElVInt(EL_keybuf_sz, 16)) {
+        return;
+    }
+    for (i = 0; i < 16; i++) {
+        if (!ebmlWriteElInt(EL_keybuf, keybuf[i])) {
+            return;
+        }
+    }
+
+    // more core state, globals
+    if (!ebmlWriteElInt(EL_mode_sigma_reg, mode_sigma_reg)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_mode_goose, mode_goose)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_time_clktd, mode_time_clktd)) {
+        return;
+    }
+    if (!ebmlWriteElBool(EL_mode_time_clk24, mode_time_clk24)) {
+        return;
+    }
+    if (!ebmlWriteElString(EL_flags, sizeof(flags_struct), flags.farray)) {
+        return;
+    }
+
+    if (!ebmlWriteElInt(EL_current_prgm, current_prgm)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_pc, pc)) {
+        return;
+    }
+    if (!ebmlWriteElInt(EL_prgm_highlight_row, prgm_highlight_row)) {
+        return;
+    }
+
+    if (!ebmlWriteElString(EL_varmenu, sizeof(varmenu), varmenu)) {
+        return;
+    }
+    // no need to save, dynamic
+    //if (!ebmlWriteElInt(EL_varmenu_rows, varmenu_rows)) {
+    //    return;
+    //}
+    if (!ebmlWriteElInt(EL_varmenu_row, varmenu_row)) {
+        return;
+    }
+    for (i = 0; i < 6; i++) {
+        if (!ebmlWriteElString(EL_varmenu_label + (i << 4), varmenu_labellength[i], varmenu_labeltext[i])) {
+            return;
+        }
+    }
+    if (!ebmlWriteElInt(EL_varmenu_role, varmenu_role)) {
+        return;
+    }
+
+    if (!ebmlWriteElInt(EL_rtn_sp, rtn_sp)) {
+        return;
+    }
+
+    if (!ebmlWriteElVInt(EL_rtn_prgm_sz, MAX_RTNS)) {
+        return;
+    }
+    for (i = 0; i < MAX_RTNS; i++) {
+        if (!ebmlWriteElInt(EL_rtn_prgm, rtn_prgm[i])) {
+            return;
+        }
+    }
+    if (!ebmlWriteElVInt(EL_rtn_pc_sz, MAX_RTNS)) {
+        return;
+    }
+    for (i = 0; i < MAX_RTNS; i++) {
+        if (!ebmlWriteElInt(EL_rtn_pc, rtn_pc[i])) {
+            return;
+        }
+    }
+#ifdef IPHONE
+    if (!ebmlWriteElBool(EL_off_enable_flag, off_enable_flag)) {
+        return;
+    }
+#endif
+
+    // persistance of register
+    if (!ebmlWriteReg(reg_x,'x')) {
+        return;
+    }    
+    if (!ebmlWriteReg(reg_y,'y')) {
+        return;
+    }    
+    if (!ebmlWriteReg(reg_z,'z')) {
+        return;
+    }    
+    if (!ebmlWriteReg(reg_t,'t')) {
+        return;
+    }    
+    if (!ebmlWriteReg(reg_lastx,'l')) {
+        return;
+    }    
+    if (!ebmlWriteAlphaReg()) {
+        return;
+    }    
+
+    // math
+    if (!persist_math()) {
+        return;
+    }
+
+    // other core modules ???
+
+    // done
+    if (!ebmlWriteEndOfDocument()) {
+        return;
+    }
+
+    // display
+    if (!ebmlWriteDisplayDocument()) {
+        return;
+    }
+    if (!persist_display()) {
+        return;
+    }    
+    if (!ebmlWriteEndOfDocument()) {
+        return;
+    }
+
+    // persistance of variables
+    if (!ebmlWriteVarsDocument(vars_count)) {
+        return;
+    }
+    for (i = 0; i < vars_count; i++) {
+        if (!ebmlWriteVar(&vars[i])) {
+            return;
+        }
+    }
+    if (!ebmlWriteEndOfDocument()) {
+        return;
+    }
+
+    // persistance of programs
+    if (!ebmlWriteProgsDocument(prgms_count)) {
+        return;
+    }
+    for (i = 0; i < prgms_count; i++) {
+        if (!ebmlWriteProgram(i, prgms)) {
+            return;
+        }
+    }
+    if (!ebmlWriteEndOfDocument()) {
+        return;
+    }
 }
 
 void hard_reset(int bad_state_file) {

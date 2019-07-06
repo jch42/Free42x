@@ -1,3 +1,9 @@
+echo .
+echo this will erase all your files, are you sure ?
+pause
+echo really ?
+pause
+
 del free42.h
 del core_commands1.cpp
 del core_commands1.h
@@ -15,6 +21,8 @@ del core_commands7.cpp
 del core_commands7.h
 del core_display.cpp
 del core_display.h
+del core_ebml.cpp
+del core_ebml.h
 del core_globals.cpp
 del core_globals.h
 del core_helpers.cpp
@@ -50,6 +58,7 @@ del keymap2cpp.cpp
 del bid_conf.h
 del bid_functions.h
 rmdir /s /q IntelRDFPMathLib20U1
+rmdir /s /q Debug
 del readtest.c
 del readtest_lines.cpp
 del cl111libbid.lib

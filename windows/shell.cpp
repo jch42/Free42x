@@ -1,6 +1,8 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
  * Copyright (C) 2004-2019  Thomas Okken
+ * EBML state file format
+ * Copyright (C) 2018-2019  Jean-Christophe Hessemann
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -21,6 +23,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <direct.h>
+#include <io.h>
 #include <stdio.h>
 #include <shlobj.h>
 
@@ -33,6 +36,7 @@
 #include "shell_spool.h"
 #include "core_main.h"
 #include "core_display.h"
+#include "core_ebml.h"
 #include "msg2string.h"
 
 
@@ -98,8 +102,9 @@ static bool mouse_key;
 static int keymap_length = 0;
 static keymap_entry *keymap = NULL;
 
-
 #define SHELL_VERSION 7
+#define SHELL_STATE_VERSION 7
+#define SHELL_OS "Windows"
 
 typedef struct state {
     BOOL extras;
@@ -150,8 +155,7 @@ static int ann_g = 0;
 static int ann_rad = 0;
 static UINT ann_print_timer = 0;
 
-
-// Foward declarations of functions included in this code module:
+// Forward declarations of functions included in this code module:
 static void MyRegisterClass(HINSTANCE hInstance);
 static BOOL InitInstance(HINSTANCE, int);
 static LRESULT CALLBACK MainWndProc(HWND, UINT, WPARAM, LPARAM);
@@ -185,6 +189,7 @@ static void printout_length_changed();
 
 static void read_key_map(const char *keymapfilename);
 static void init_shell_state(int4 version);
+static int read_shell_ebml_state(ebmlElement_Struct *el);
 static int read_shell_state(int4 *version);
 static int write_shell_state();
 static void txt_writer(const char *text, int length);
@@ -316,9 +321,7 @@ static BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
     get_home_dir(free42dirname, FILENAMELEN);
     _mkdir(free42dirname);
-
     char keymapfilename[FILENAMELEN];
-    sprintf(statefilename, "%s\\state.bin", free42dirname);
     sprintf(printfilename, "%s\\print.bin", free42dirname);
     sprintf(keymapfilename, "%s\\keymap.txt", free42dirname);
 
@@ -344,20 +347,99 @@ static BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         printout[n] = 0;
     printout_pos = printout_bottom;
 
-    int init_mode;
-    int4 version;
-
-    statefile = fopen(statefilename, "rb");
-    if (statefile != NULL) {
-        if (read_shell_state(&version))
-            init_mode = 1;
+    int version, shellReadVersion, init_mode;
+    sprintf(statefilename, "%s\\state.ebml", free42dirname);
+    if (_access(statefilename,0) != -1) {
+        // try to get ebml state file
+        init_mode = 0x8000;             // preset general error
+        ebmlElement_Struct el;
+        statefile = fopen(statefilename, "rb");
+        // open global master document
+        el.docId = 0;
+        el.elId = EBMLFree42;
+        if (ebmlGetEl(&el) != 1) {
+            goto ebmlShellError;
+        }
+        // use global master document
+        el.docId = el.elId;
+        el.docLen = el.elLen;
+        el.docFirstEl = el.pos;
+        // get version
+        el.elId = EBMLFree42Version;
+        if (ebmlGetEl(&el) != 1) {
+            goto ebmlShellError;
+        }
+        version = el.elLen;
+        // get read version
+        el.elId = EBMLFree42ReadVersion;
+        if (ebmlGetEl(&el) != 1) {
+            goto ebmlShellError;
+        }
+        // read version compatibility ?
+        if (el.elLen > Free42EbmlCurrentVersion) {
+            init_mode = 0xC000;         // bad reader version
+            goto ebmlShellError;
+        }
+        // open shell document
+        el.elId = EBMLFree42Shell;
+        if (ebmlGetEl(&el) != 1) {
+            goto ebmlShellError;
+        }
+        // use shell document
+        el.docId = el.elId;
+        el.docLen = el.elLen;
+        el.docFirstEl = el.pos;
+        // get read version
+        el.elId = EBMLFree42ShellReadVersion;
+        if (ebmlGetEl(&el) != 1) {
+            goto ebmlShellError;
+        }
+        shellReadVersion = el.elLen;
+        // get shell OS string
+        el.elId = EBMLFree42ShellOS;
+        if (ebmlGetEl(&el) != 1) {
+            goto ebmlShellError;
+        }
+        // matching OS ?
+        char mystr[32];
+        if (!ebmlGetString(&el, mystr, el.elLen)) {
+            goto ebmlShellError;
+        }
+        if ((strlen(SHELL_OS) != el.elLen) || (strncmp(mystr, SHELL_OS, el.elLen))) {
+            init_mode = 0x1001;         // bad OS, tag ebml format
+            goto ebmlShellError;
+        }
+        // read version compatibility ?
+        if (shellReadVersion > SHELL_VERSION) {
+            init_mode = 0x2001;         // bad shell version
+            goto ebmlShellError;
+        }
+        init_mode = 0x0001;             // no error, normal init, tag ebml format
+        // get shell state
+        if (read_shell_ebml_state(&el)) {
+            init_mode |= 0x0800;        // unable to read shell state
+        }
+        ebmlShellError:
+        if (init_mode & 0xf0fe) {
+            init_shell_state(-1);
+        }
+    }
+    else {
+        // if no free42 ebml state file, try to import free42 state file
+        sprintf(statefilename, "%s\\state.bin", free42dirname);
+        statefile = fopen(statefilename, "rb");
+        if (statefile != NULL) {
+            if (read_shell_state(&version))
+                init_mode = 0x0000;
+            else {
+                init_shell_state(-1);
+                init_mode = 0xff00;
+            }
+        }
         else {
             init_shell_state(-1);
-            init_mode = 2;
+            init_mode = 0xf000;
         }
-    } else {
-        init_shell_state(-1);
-        init_mode = 0;
     }
 
     if (state.singleInstance) {
@@ -1012,7 +1094,7 @@ static LRESULT CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
                 EndDialog(hDlg, id);
                 return TRUE;
             }
-            else if (id == IDC_WEBSITELINK || id == IDC_FORUMLINK)
+            else if (id == IDC_WEBSITELINK || id == IDC_FORUMLINK || id == IDC_XWEBSITELINK)
             {
                 char buf[256];
                 GetDlgItemText(hDlg, id, buf, 255);
@@ -1463,6 +1545,7 @@ static void Quit() {
         ;
     }
 
+    sprintf(statefilename, "%s\\state.ebml", free42dirname);
     statefile = fopen(statefilename, "wb");
     if (statefile != NULL) {
         if (!placement_saved) {
@@ -1473,15 +1556,18 @@ static void Quit() {
                 state.printOutPlacementValid = 1;
             }
         }
-        write_shell_state();
+    ebmlWriteMasterHeader();
+    write_shell_state();
     }
     core_quit();
-    if (statefile != NULL)
+    ebmlWriteEndOfDocument();
+    if (statefile != NULL) {
         fclose(statefile);
+    }
 
-    if (print_txt != NULL)
+    if (print_txt != NULL) {
         fclose(print_txt);
-    
+    }
     if (print_gif != NULL) {
         shell_finish_gif(gif_seeker, gif_writer);
         fclose(print_gif);
@@ -1881,6 +1967,22 @@ void shell_request_timeout3(int delay) {
     timer3 = SetTimer(NULL, 0, delay, timeout3);
 }
 
+int4 shell_fseek(int4 offset, int mode) {
+    return fseek(statefile, offset, mode);
+}
+
+int4 shell_ftell() {
+    return ftell(statefile);
+}
+
+int4 shell_fsize() {
+struct stat buf;
+    if (stat(statefilename, &buf) != 0) {
+        return 0;
+    }
+    return buf.st_size;
+}
+
 int4 shell_read_saved_state(void *buf, int4 bufsize) {
     if (statefile == NULL)
         return -1;
@@ -2233,6 +2335,26 @@ static void init_shell_state(int4 version) {
     }
 }
 
+static int read_shell_ebml_state(ebmlElement_Struct *el) {
+    int ver;
+    ver = -1;
+    el->elId = EBMLFree42ShellStateVersion;
+    if (ebmlGetEl(el) == 1) {
+        ver = el->elLen;
+        if ( ver > 0 && ver <= SHELL_VERSION) {
+            el->elId = EBMLFree42ShellState;
+            if (ebmlGetEl(el) == 1 && el->elLen <= sizeof(state_type) && ebmlGetBinary(el, &state, el->elLen)) {
+                // sucessfully read shell state, nothing to do
+            }
+            else {
+                // something was wrong, full init
+                ver = -1;
+            }
+        }
+    }
+    init_shell_state(ver);
+    return 0;
+}
 static int read_shell_state(int4 *ver) {
     int4 magic;
     int4 version;
@@ -2271,22 +2393,21 @@ static int read_shell_state(int4 *ver) {
 }
 
 static int write_shell_state() {
-    int4 magic = FREE42_MAGIC;
-    int4 version = FREE42_VERSION;
+    unsigned int version;
     int4 state_size = sizeof(state_type);
-    int4 state_version = SHELL_VERSION;
-
-    if (!shell_write_saved_state(&magic, sizeof(int4)))
+    version = SHELL_STATE_VERSION;
+    if (!ebmlWriteShellDocument(version, version, sizeof(SHELL_OS)-1, SHELL_OS)) {
         return 0;
-    if (!shell_write_saved_state(&version, sizeof(int4)))
+    }
+    if (!ebmlWriteElVInt(EBMLFree42ShellStateVersion, version)) {
         return 0;
-    if (!shell_write_saved_state(&state_size, sizeof(int4)))
+    }
+    if (!ebmlWriteElBinary(EBMLFree42ShellState, state_size, &state)) {
         return 0;
-    if (!shell_write_saved_state(&state_version, sizeof(int4)))
+    }
+    if (!ebmlWriteEndOfDocument()) {
         return 0;
-    if (!shell_write_saved_state(&state, sizeof(state_type)))
-        return 0;
-
+    }
     return 1;
 }
 

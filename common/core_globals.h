@@ -1,6 +1,8 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
  * Copyright (C) 2004-2019  Thomas Okken
+ * EBML state file format
+ * Copyright (C) 2018-2019  Jean-Christophe Hessemann
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -262,6 +264,16 @@ typedef struct {
     char text[6];
 } vartype_string;
 
+/* one vartype to rule them all*/
+typedef union {
+    vartype *g;
+    vartype_real *r;
+    vartype_complex *c;
+    vartype_realmatrix *rm;
+    vartype_complexmatrix *cm;
+    vartype_string *s;
+} allvartypes_ptr;
+
 /******************/
 /* Emulator state */
 /******************/
@@ -518,10 +530,12 @@ extern int remove_program_catalog;
 #define NUMBER_FORMAT_BCD20_OLD 1
 #define NUMBER_FORMAT_BCD20_NEW 2
 #define NUMBER_FORMAT_BID128 3
+#define CORE_VERSION 1
 extern int state_file_number_format;
 
 extern bool no_keystrokes_yet;
 
+extern char read_state_status[23];
 
 /*********************/
 /* Utility functions */
@@ -540,6 +554,7 @@ void rebuild_label_table();
 void delete_command(int4 pc);
 void store_command(int4 pc, int command, arg_struct *arg);
 void store_command_after(int4 *pc, int command, arg_struct *arg);
+void store_command_simple(int4 *pc, int command, arg_struct *arg);
 int4 pc2line(int4 pc);
 int4 line2pc(int4 line);
 int4 find_local_label(const arg_struct *arg);
@@ -552,6 +567,11 @@ bool integ_active();
 void unwind_stack_until_solve();
 
 bool load_state(int4 version);
+bool load_ebml_state(int4 version);
+bool load_ebml_core(int4 version);
+bool load_ebml_display(int4 version);
+bool load_ebml_vars(int4 version);
+bool load_ebml_progs(int4 version);
 void save_state();
 void hard_reset(int bad_state_file);
 

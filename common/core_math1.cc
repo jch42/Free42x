@@ -1,6 +1,8 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
  * Copyright (C) 2004-2019  Thomas Okken
+ * EBML state file format
+ * Copyright (C) 2018-2019  Jean-Christophe Hessemann
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -31,6 +33,7 @@
 #include "core_helpers.h"
 #include "core_main.h"
 #include "core_variables.h"
+#include "core_ebml.h"
 #include "shell.h"
 
 #define SOLVE_VERSION 4
@@ -104,14 +107,466 @@ static void reset_integ();
 
 
 bool persist_math() {
-    int size = sizeof(solve_state);
+int i;
     solve.version = SOLVE_VERSION;
-    if (!shell_write_saved_state(&size, sizeof(int))) return false;
-    if (!shell_write_saved_state(&solve, sizeof(solve_state))) return false;
-    size = sizeof(integ_state);
+    if (!ebmlWriteElInt(EL_solveVersion, solve.version)) {
+        return false;
+    }
+    if (!ebmlWriteElString(EL_solvePrgm_name, solve.prgm_length, solve.prgm_name)) {
+        return false;
+    }
+    if (!ebmlWriteElString(EL_solveActive_prgm_name, solve.active_prgm_length, solve.active_prgm_name)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_solveKeep_running, solve.keep_running)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_solvePrev_prgm, solve.prev_prgm)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_solvePrev_pc, solve.prev_pc)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_solveState, solve.state)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_solveWhich, solve.which)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_solveToggle, solve.toggle)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_solveRetry_counter, solve.retry_counter)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solveRetry_value, &solve.retry_value)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solveX1, &solve.x1)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solveX2, &solve.x2)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solveX3, &solve.x3)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solveFx1, &solve.fx1)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solveFx2, &solve.fx2)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solvePrev_x, &solve.prev_x)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solveCurr_x, &solve.curr_x)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solveCurr_f, &solve.curr_f)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solveXm, &solve.xm)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_solveFxm, &solve.fxm)) {
+        return false;
+    }
+    if (!ebmlWriteElVInt(EL_solveShadow_name_sz, NUM_SHADOWS)) {
+        return false;
+    }
+    for (i = 0; i < NUM_SHADOWS; i++) {
+        if (!ebmlWriteElString(EL_solveShadow_name, solve.shadow_length[i], solve.shadow_name[i])) {
+            return false;
+        }
+    }
+    if (!ebmlWriteElVInt(EL_solveShadow_value_sz, NUM_SHADOWS)) {
+        return false;
+    }
+    for (i = 0; i < NUM_SHADOWS; i++) {
+        if (!ebmlWriteElPhloat(EL_solveShadow_value, &solve.shadow_value[i])) {
+            return false;
+        }
+    }
+    if (!ebmlWriteElInt(EL_solveLast_disp_time, solve.last_disp_time)) {
+        return false;
+    }
+
     integ.version = INTEG_VERSION;
-    if (!shell_write_saved_state(&size, sizeof(int))) return false;
-    if (!shell_write_saved_state(&integ, sizeof(integ_state))) return false;
+    if (!ebmlWriteElInt(EL_integVersion, integ.version)) {
+        return false;
+    }
+    if (!ebmlWriteElString(EL_integPrgm_name, integ.prgm_length, integ.prgm_name)) {
+        return false;
+    }
+    if (!ebmlWriteElString(EL_integActive_prgm_name, integ.active_prgm_length, integ.active_prgm_name)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_integKeep_running, integ.keep_running)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_integPrev_prgm, integ.prev_prgm)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_integPrev_pc, integ.prev_pc)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_integState, integ.state)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integLlim, &integ.llim)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integUlim, &integ.ulim)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integAcc, &integ.acc)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integA, &integ.a)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integB, &integ.b)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integEps, &integ.eps)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_integN, integ.n)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_integM, integ.m)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_integI, integ.i)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(EL_integK, integ.k)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integH, &integ.h)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integSum, &integ.sum)) {
+        return false;
+    }
+    if (!ebmlWriteElVInt(EL_integC_sz, ROMB_K)) {
+        return false;
+    }
+    for (i = 0; i < ROMB_K ; i++) {
+        if (!ebmlWriteElPhloat(EL_integC, &integ.c[i])) {
+            return false;
+        }
+    }
+    if (!ebmlWriteElVInt(EL_integS_sz, ROMB_K + 1)) {
+        return false;
+    }
+    for (i = 0; i < (ROMB_K + 1); i++) {
+        if (!ebmlWriteElPhloat(EL_integS, &integ.s[i])) {
+            return false;
+        }
+    }
+    if (!ebmlWriteElInt(EL_integNsteps, integ.nsteps)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integP, &integ.p)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integT, &integ.t)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integU, &integ.u)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integPrev_int, &integ.prev_int)) {
+        return false;
+    }
+    if (!ebmlWriteElPhloat(EL_integPrev_res, &integ.prev_res)) {
+        return false;
+    }
+    return true;
+}
+
+bool unpersist_ebml_math(ebmlElement_Struct *el, bool discard) {
+    int i, sz;
+    bool success;
+    el->elId = EL_solveVersion;
+    success = ebmlReadElInt(el, &solve.version);
+    if (success && (solve.version != SOLVE_VERSION || discard)) {
+        reset_solve();
+    }
+    else {
+        el->elId = EL_solvePrgm_name;
+        solve.prgm_length = sizeof(solve.prgm_name);
+        if (!ebmlReadElString(el, solve.prgm_name, &solve.prgm_length)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveActive_prgm_name;
+        solve.active_prgm_length = sizeof(solve.active_prgm_name);
+        if (!ebmlReadElString(el, solve.active_prgm_name, &solve.active_prgm_length)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveKeep_running;
+        if (!ebmlReadElInt(el, &solve.keep_running)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solvePrev_prgm;
+        if (!ebmlReadElInt(el, &solve.prev_prgm)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solvePrev_pc;
+        if (!ebmlReadElInt(el, &solve.prev_pc)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveState;
+        if (!ebmlReadElInt(el, &solve.state)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveWhich;
+        if (!ebmlReadElInt(el, &solve.which)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveToggle;
+        if (!ebmlReadElInt(el, &solve.toggle)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveRetry_counter;
+        if (!ebmlReadElInt(el, &solve.retry_counter)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveRetry_value;
+        if (!ebmlReadElPhloat(el, &solve.retry_value)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveX1;
+        if (!ebmlReadElPhloat(el, &solve.x1)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveX2;
+        if (!ebmlReadElPhloat(el, &solve.x2)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveX3;
+        if (!ebmlReadElPhloat(el, &solve.x3)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveFx1;
+        if (!ebmlReadElPhloat(el, &solve.fx1)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveFx2;
+        if (!ebmlReadElPhloat(el, &solve.fx2)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solvePrev_x;
+        if (!ebmlReadElPhloat(el, &solve.prev_x)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveCurr_x;
+        if (!ebmlReadElPhloat(el, &solve.curr_x)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveCurr_f;
+        if (!ebmlReadElPhloat(el, &solve.curr_f)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveXm;
+        if (!ebmlReadElPhloat(el, &solve.xm)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveFxm;
+        if (!ebmlReadElPhloat(el, &solve.fxm)) {
+            goto ebmlSolveError;
+        }
+        el->elId = EL_solveShadow_name_sz;
+        if (ebmlGetEl(el) != 1) {
+            goto ebmlSolveError;
+        }
+        sz = el->elLen;
+        for (i = 0; i < NUM_SHADOWS; i++) {
+            if (i < sz) {
+                el->elId = EL_solveShadow_name;
+                solve.shadow_length[i] = 7;
+                if (!ebmlReadElString(el, solve.shadow_name[i], &solve.shadow_length[i])) {
+                    goto ebmlSolveError;
+                }
+            }
+            else {
+                solve.shadow_length[i] = 0;
+            }
+        }
+        el->elId = EL_solveShadow_value_sz;
+        if (ebmlGetEl(el) != 1) {
+            goto ebmlSolveError;
+        }
+        sz = el->elLen;
+        for (i = 0; i < NUM_SHADOWS; i++) {
+            if (i < sz) {
+                el->elId = EL_solveShadow_value;
+                if (!ebmlReadElPhloat(el, &solve.shadow_value[i])) {
+                    goto ebmlSolveError;
+                }
+            }
+            else {
+                solve.shadow_value[i] = 0;
+            }
+        }
+        el->elId = EL_solveLast_disp_time;
+        if (!ebmlReadElInt(el, &i)) {
+            goto ebmlSolveError;
+        }
+        solve.last_disp_time = i;
+        goto ebmlSolveOk;
+        ebmlSolveError:
+            read_state_status[17] = 'S';
+            reset_solve();
+        ebmlSolveOk:
+            ;
+    }
+
+    el->elId = EL_integVersion;
+    success = ebmlReadElInt(el, &integ.version);
+    if (success && (integ.version != INTEG_VERSION || discard)) {
+        reset_integ();
+    }
+    else {
+        el->elId = EL_integPrgm_name;
+        integ.prgm_length = sizeof(integ.prgm_name);
+        if (!ebmlReadElString(el, integ.prgm_name, &integ.prgm_length)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integActive_prgm_name;
+        integ.active_prgm_length = sizeof(integ.active_prgm_name);
+        if (!ebmlReadElString(el, integ.active_prgm_name, &integ.active_prgm_length)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integKeep_running;
+        if (!ebmlReadElInt(el, &integ.keep_running)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integPrev_prgm;
+        if (!ebmlReadElInt(el, &integ.prev_prgm)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integPrev_pc;
+        if (!ebmlReadElInt(el, &integ.prev_pc)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integState;
+        if (!ebmlReadElInt(el, &integ.state)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integLlim;
+        if (!ebmlReadElPhloat(el, &integ.llim)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integUlim;
+        if (!ebmlReadElPhloat(el, &integ.ulim)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integAcc;
+        if (!ebmlReadElPhloat(el, &integ.acc)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integA;
+        if (!ebmlReadElPhloat(el, &integ.a)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integB;
+        if (!ebmlReadElPhloat(el, &integ.b)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integEps;
+        if (!ebmlReadElPhloat(el, &integ.eps)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integN;
+        if (!ebmlReadElInt(el, &integ.n)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integM;
+        if (!ebmlReadElInt(el, &integ.m)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integI;
+        if (!ebmlReadElInt(el, &integ.i)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integK;
+        if (!ebmlReadElInt(el, &integ.k)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integH;
+        if (!ebmlReadElPhloat(el, &integ.h)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integSum;
+        if (!ebmlReadElPhloat(el, &integ.sum)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integC_sz;
+        if (ebmlGetEl(el) != 1) {
+            goto ebmlIntegError;
+        }
+        sz = el->elLen;
+        for (i = 0; i < ROMB_K; i++) {
+            if (i < sz) {
+                el->elId = EL_integC;
+                if (!ebmlReadElPhloat(el, &integ.c[i])) {
+                    goto ebmlIntegError;
+                }
+            }
+            else {
+                integ.c[i] = 0;
+            }
+        }
+        el->elId = EL_integS_sz;
+        if (ebmlGetEl(el) != 1) {
+            goto ebmlIntegError;
+        }
+        sz = el->elLen;
+        for (i = 0; i < ROMB_K + 1; i++) {
+            if (i < sz) {
+                el->elId = EL_integS;
+                if (!ebmlReadElPhloat(el, &integ.s[i])) {
+                    goto ebmlIntegError;
+                }
+            }
+            else {
+                integ.s[i] = 0;
+            }
+        }
+        el->elId = EL_integNsteps;
+        if (!ebmlReadElInt(el, &integ.nsteps)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integP;
+        if (!ebmlReadElPhloat(el, &integ.p)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integT;
+        if (!ebmlReadElPhloat(el, &integ.t)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integU;
+        if (!ebmlReadElPhloat(el, &integ.u)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integPrev_int;
+        if (!ebmlReadElPhloat(el, &integ.prev_int)) {
+            goto ebmlIntegError;
+        }
+        el->elId = EL_integPrev_res;
+        if (!ebmlReadElPhloat(el, &integ.prev_res)) {
+            goto ebmlIntegError;
+        }
+        goto ebmlIntegOk;
+        ebmlIntegError:
+            read_state_status[16] = 'I';
+            reset_integ();
+        ebmlIntegOk:
+            ;
+    }
     return true;
 }
 

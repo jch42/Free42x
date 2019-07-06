@@ -16,6 +16,8 @@ cmp core_commands7.cpp ../common/core_commands7.cc
 cmp core_commands7.h ../common/core_commands7.h
 cmp core_display.cpp ../common/core_display.cc
 cmp core_display.h ../common/core_display.h
+cmp core_ebml.cpp ../common/core_ebml.cc
+cmp core_ebml.h ../common/core_ebml.h
 cmp core_globals.cpp ../common/core_globals.cc
 cmp core_globals.h ../common/core_globals.h
 cmp core_helpers.cpp ../common/core_helpers.cc

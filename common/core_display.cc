@@ -1,6 +1,8 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
  * Copyright (C) 2004-2019  Thomas Okken
+ * EBML state file format
+ * Copyright (C) 2018-2019  Jean-Christophe Hessemann
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -20,6 +22,7 @@
 
 #include "core_display.h"
 #include "core_commands2.h"
+#include "core_ebml.h"
 #include "core_helpers.h"
 #include "core_main.h"
 #include "core_tables.h"
@@ -551,31 +554,242 @@ static int get_cat_index();
 
 
 bool persist_display() {
-    if (!shell_write_saved_state(catalogmenu_section, 5 * sizeof(int)))
+int i, j;
+    if (!ebmlWriteElVInt(El_display_catalogmenu_section_sz, 5)) {
         return false;
-    if (!shell_write_saved_state(catalogmenu_rows, 5 * sizeof(int)))
-        return false;
-    if (!shell_write_saved_state(catalogmenu_row, 5 * sizeof(int)))
-        return false;
-    if (!shell_write_saved_state(catalogmenu_item, 30 * sizeof(int)))
-        return false;
-    if (!shell_write_saved_state(custommenu_length, 18 * sizeof(int)))
-        return false;
-    if (!shell_write_saved_state(custommenu_label, 126))
-        return false;
-    for (int i = 0; i < 9; i++)
-        if (!write_arg(progmenu_arg + i))
+    }
+    for (i = 0; i < 5; i++) {
+        if (!ebmlWriteElInt(El_display_catalogmenu_section, catalogmenu_section[i])) {
             return false;
-    if (!shell_write_saved_state(progmenu_is_gto, 9 * sizeof(int)))
+        }
+    }
+    if (!ebmlWriteElVInt(El_display_catalogmenu_rows_sz, 5)) {
         return false;
-    if (!shell_write_saved_state(progmenu_length, 6 * sizeof(int)))
+    }
+    for (i = 0; i < 5; i++) {
+        if (!ebmlWriteElInt(El_display_catalogmenu_rows, catalogmenu_rows[i])) {
+            return false;
+        }
+    }
+    if (!ebmlWriteElVInt(El_display_catalogmenu_row_sz, 5)) {
         return false;
-    if (!shell_write_saved_state(progmenu_label, 42))
+    }
+    for (i = 0; i < 5; i++) {
+        if (!ebmlWriteElInt(El_display_catalogmenu_row, catalogmenu_row[i])) {
+            return false;
+        }
+    }
+
+    if (!ebmlWriteElVInt(El_display_catalogmenu_item_sz, 30)) {
         return false;
-    if (!shell_write_saved_state(display, 272))
+    }
+    for (i = 0; i < 5; i++) {
+        for (j = 0; j < 6; j++) {
+            if (!ebmlWriteElInt(El_display_catalogmenu_item, catalogmenu_item[i][j])) {
+                return false;
+            }
+        }
+    }
+    if (!ebmlWriteElVInt(El_display_custommenu_sz, 18)) {
         return false;
-    if (!shell_write_saved_state(&appmenu_exitcallback, sizeof(int)))
+    }
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 6; j++) {
+            if (!ebmlWriteElString(El_display_custommenu , custommenu_length[i][j], custommenu_label[i][j])) {
+                return false;
+            }
+        }
+    }
+    if (!ebmlWriteElVInt(El_display_progmenu_arg_sz, 9)) {
         return false;
+    }
+    for (i = 0; i < 9; i++) {
+        if (!ebmlWriteElArg(El_display_progmenu_arg, &progmenu_arg[i])) {
+            return false;
+        }
+    }
+    if (!ebmlWriteElVInt(El_display_progmenu_is_gto_sz, 9)) {
+        return false;
+    }
+    for (i = 0; i < 9; i++) {
+        if (!ebmlWriteElInt(El_display_progmenu_is_gto, progmenu_is_gto[i])) {
+            return false;
+        }
+    }
+    if (!ebmlWriteElVInt(El_display_progmenu_sz, 9)) {
+        return false;
+    }
+    for (i = 0; i < 9; i++) {
+        if (!ebmlWriteElString(El_display_progmenu, progmenu_length[i], progmenu_label[i])) {
+            return false;
+        }
+    }
+    if (!ebmlWriteElString(El_display, sizeof(display), display)) {
+        return false;
+    }
+    if (!ebmlWriteElInt(El_display_appmenu_exitcallback, appmenu_exitcallback)) {
+        return false;
+    }
+    return true;
+}
+
+bool unpersist_ebml_display(ebmlElement_Struct *el) {
+int i, j, k, sz;    
+    is_dirty = 0;
+
+    el->elId = El_display_catalogmenu_section_sz;
+    if (ebmlGetEl(el) != 1) {
+        return false;
+    }
+    sz = el->elLen;
+    for (i = 0; i < 5; i++) {
+        if (i < sz) {
+            el->elId = El_display_catalogmenu_section;
+            if (!ebmlReadElInt(el, &catalogmenu_section[i])) {
+                return false;
+            }
+        }
+        else {
+            catalogmenu_section[i] = 0;
+        }
+    }
+
+    el->elId = El_display_catalogmenu_rows_sz;
+    if (ebmlGetEl(el) != 1) {
+        return false;
+    }
+    sz = el->elLen;
+    for (i = 0; i < 5; i++) {
+        if (i < sz) {
+            el->elId = El_display_catalogmenu_rows;
+            if (!ebmlReadElInt(el, &catalogmenu_rows[i])) {
+                return false;
+            }
+        }
+        else {
+            catalogmenu_rows[i] = 0;
+        }
+    }
+
+    el->elId = El_display_catalogmenu_row_sz;
+    if (ebmlGetEl(el) != 1) {
+        return false;
+    }
+    sz = el->elLen;
+    for (i = 0; i < 5; i++) {
+        if (i < sz) {
+            el->elId = El_display_catalogmenu_row;
+            if (!ebmlReadElInt(el, &catalogmenu_row[i])) {
+                return false;
+            }
+        }
+        else {
+            catalogmenu_row[i] = 0;
+        }
+    }
+
+    k = 0;
+    el->elId = El_display_catalogmenu_item_sz;
+    if (ebmlGetEl(el) != 1) {
+        return false;
+    }
+    sz = el->elLen;
+    for (i = 0; i < 5; i++) {
+        for (j = 0; j < 6; j++) {
+            if (k++ < sz) {
+                el->elId = El_display_catalogmenu_item;
+                if (!ebmlReadElInt(el, &catalogmenu_item[i][j])) {
+                    return false;
+                }
+            }
+            else {
+                catalogmenu_item[i][j] = 0;
+            }
+        }
+    }
+
+    k = 0;
+    el->elId = El_display_custommenu_sz;
+    if (ebmlGetEl(el) != 1) {
+        return false;
+    }
+    sz = el->elLen;
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 6; j++) {
+            if (k++ < sz) {
+                el->elId = El_display_custommenu;
+                custommenu_length[i][j] = 7;
+                if (!ebmlReadElString(el, custommenu_label[i][j], &custommenu_length[i][j])) {
+                    return false;
+                }
+            }
+            else {
+                custommenu_length[i][j] = 0;
+            }
+        }
+    }
+
+    el->elId = El_display_progmenu_arg_sz;
+    if (ebmlGetEl(el) != 1) {
+        return false;
+    }
+    sz = el->elLen;
+    for (i = 0; i < 9; i++) {
+        if (i < sz) {
+            el->elId = El_display_progmenu_arg;
+            if (!ebmlReadElArg(el, &progmenu_arg[i])) {
+                return false;
+            }
+        }
+        else {
+            progmenu_arg[i].type = ARGTYPE_NONE;
+        }
+    }
+
+    el->elId = El_display_progmenu_is_gto_sz;
+    if (ebmlGetEl(el) != 1) {
+        return false;
+    }
+    sz = el->elLen;
+    for (i = 0; i < 9; i++) {
+        if (i < sz) {
+            el->elId = El_display_progmenu_is_gto;
+            if (!ebmlReadElInt(el, &progmenu_is_gto[i])) {
+                return false;
+            }
+        }
+        else {
+            progmenu_is_gto[i] = 0;
+        }
+    }
+
+    el->elId = El_display_progmenu_sz;
+    if (ebmlGetEl(el) != 1) {
+        return false;
+    }
+    sz = el->elLen;
+    for (i = 0; i < 9; i++) {
+        if (i < sz) {
+            el->elId = El_display_progmenu;
+            progmenu_length[i] = 7;
+            if (!ebmlReadElString(el, progmenu_label[i], &progmenu_length[i])) {
+                return false;
+            }
+        }
+        else {
+            progmenu_length[i] = 0;
+        }
+    }
+
+    el->elId = El_display;
+    i = sizeof(display);
+    if (!ebmlReadElString(el, display, &i) || i != sizeof(display)) {
+        return false;
+    }
+    el->elId = El_display_appmenu_exitcallback;
+    if (!ebmlReadElInt(el, &appmenu_exitcallback)) {
+        return false;
+    }
     return true;
 }
 
@@ -1069,7 +1283,7 @@ void tb_print_current_program(textbuf *tb) {
 void display_prgm_line(int row, int line_offset) {
     int4 tmppc = pc;
     int4 tmpline = pc2line(pc);
-    int cmd;
+    int cmd = 0;
     arg_struct arg;
     char buf[44];
     int bufptr;

@@ -1,6 +1,8 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
  * Copyright (C) 2004-2019  Thomas Okken
+ * EBML state file format
+ * Copyright (C) 2018-2019  Jean-Christophe Hessemann
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -145,6 +147,6 @@ extern "C" double log2(double x);
  */
 #define FREE42_MAGIC 0x466b3432
 #define FREE42_VERSION 22
-
+#define Free42EbmlCurrentVersion    1
 
 #endif

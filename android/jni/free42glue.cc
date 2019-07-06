@@ -1,6 +1,8 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
  * Copyright (C) 2004-2019  Thomas Okken
+ * EBML state file format
+ * Copyright (C) 2018-2019  Jean-Christophe Hessemann
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -24,7 +26,12 @@
 #include "shell.h"
 #include "core_main.h"
 #include "core_display.h"
+#include "core_ebml.h"
 
+#define FILENAMELEN 256
+#define SHELL_VERSION 8
+#define SHELL_STATE_VERSION 8
+#define SHELL_OS "Android"
 
 #define GLUE_DEBUG 0
 
@@ -85,6 +92,7 @@ static JNIEnv *getJniEnv() {
 /*******************************************************************/
 /* A couple of functions to enable the Java code to get the values */
 /* of the FREE42_MAGIC and FREE42_VERSION macros.                  */
+/* and some more ebml macros too!                                  */
 /*******************************************************************/
 
 extern "C" jint
@@ -97,6 +105,105 @@ Java_com_thomasokken_free42_Free42Activity_FREE42_1VERSION(JNIEnv *env, jobject 
     return FREE42_VERSION;
 }
 
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellVersion(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellVersion;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellReadVersion(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellReadVersion;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellOs(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellOS;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellPrintToGif(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellPrintToGif;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellPrintToGifFileName(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellPrintToGifFileName;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellPrintToTxt(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellPrintToTxt;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellPrintToTxtFileName(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellPrintToTxtFileName;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellPrintMaxGifHeight(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellPrintMaxGifHeight;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidSkinName0(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidSkinName0;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidSkinName1(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidSkinName1;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidExtSkinName0(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidExtSkinName0;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidExtSkinName1(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidExtSkinName1;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidKeyClickEn(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidKeyClickEn;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidPrefOrient(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidPrefOrient;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidSkinSmooth0(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidSkinSmooth0;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidSkinSmooth1(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidSkinSmooth1;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidDispSmooth0(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidDispSmooth0;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidDispSmooth1(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidDispSmooth1;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidKeyVibraEn(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidKeyVibraEn;
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_FREE42_1ShellAndroidStyle(JNIEnv *env, jobject thiz) {
+    return EBMLFree42ShellAndroidStyle;
+}
 
 /*********************************************************************/
 /* Since JNI calls are very expensive, I avoid polling the shell to  */
@@ -116,6 +223,185 @@ Java_com_thomasokken_free42_Free42Activity_core_1keydown_1finish(JNIEnv *env, jo
 /**********************************************************/
 /* Here followeth the stubs for the core_main.h interface */
 /**********************************************************/
+
+static ebmlElement_Struct el;
+
+extern "C" void
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1getShellDocument(JNIEnv *env, jobject thiz) {
+    Tracer T("shell_ebml_getShellDocument");
+    int version, free42EbmlMasterVersion;
+    // open global master document
+    el.docId = 0;
+    el.elId = EBMLFree42;
+    if (ebmlGetEl(&el) != 1) {
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+    else {
+        // use global master document
+        el.docId = el.elId;
+        el.docLen = el.elLen;
+        el.docFirstEl = el.pos;
+        // get version
+        el.elId = EBMLFree42Version;
+        if (ebmlGetEl(&el) != 1) {
+            jclass exception = env->FindClass("java/lang/Exception");
+            env->ThrowNew(exception, "");
+        }
+        else {
+            free42EbmlMasterVersion = el.elLen;
+            // get read version
+            el.elId = EBMLFree42ReadVersion;
+            if (ebmlGetEl(&el) != 1) {
+                jclass exception = env->FindClass("java/lang/Exception");
+                env->ThrowNew(exception, "");
+            }
+            else {
+                // read version compatibility ?
+                if (el.elLen > Free42EbmlCurrentVersion) {
+                    jclass exception = env->FindClass("java/lang/Exception");
+                    env->ThrowNew(exception, "");
+                }
+                else {
+                    // open shell document
+                    el.elId = EBMLFree42Shell;
+                    if (ebmlGetEl(&el) != 1) {
+                        jclass exception = env->FindClass("java/lang/Exception");
+                        env->ThrowNew(exception, "");
+                    }
+                    else {
+                        // use shell document
+                        el.docId = el.elId;
+                        el.docLen = el.elLen;
+                        el.docFirstEl = el.pos;
+                    }
+                }
+            }
+        }
+    }
+}
+
+extern "C" jint
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1getEl(JNIEnv *env, jobject thiz, jint elId) {
+    Tracer T("shell_ebml_getEl");
+    int n = 0;
+    el.elId = elId;
+    if (ebmlGetEl(&el) != 1) {
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+    else {
+        n = el.elLen;
+    }
+    return n;
+}
+
+extern "C" jboolean
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1readBool(JNIEnv *env, jobject thiz, jint elId) {
+    Tracer T("shell_ebml_readBool");
+    bool b;
+    el.elId = elId;
+    if (!ebmlReadElBool(&el, &b)) {
+        b = false;
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+    return b;
+}
+
+extern "C" jlong
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1readInt(JNIEnv *env, jobject thiz, jlong elId) {
+    Tracer T("shell_ebml_readInt");
+    int i;
+    el.elId = elId;
+    if (!ebmlReadElInt(&el, &i)) {
+        i = 0;
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+    return i;
+}
+
+extern "C" jstring
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1readStr(JNIEnv *env, jobject thiz, jint elId) {
+    Tracer T("shell_ebml_readStr");
+    int l;
+    char s[FILENAMELEN];
+    jstring js;
+    el.elId = elId;
+    l = sizeof(s);
+    if (!ebmlReadElString(&el, s, &l)) {
+        l = 0;
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+    s[l] = 0;
+    js = env->NewStringUTF(s);
+    return js;
+}
+
+extern "C" void
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1writeShellDocument(JNIEnv *env, jobject thiz) {
+    Tracer T("shell_ebml_write");
+    int version;
+    ebmlWriteMasterHeader();
+    version = SHELL_STATE_VERSION;
+    if (!ebmlWriteShellDocument(version, version, sizeof(SHELL_OS)-1, SHELL_OS)) {
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+    else if (!ebmlWriteElVInt(EBMLFree42ShellStateVersion, version)) {
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+}
+
+extern "C" void
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1writeVInt(JNIEnv *env, jobject thiz, jint elId, jlong i) {
+    Tracer T("shell_ebml_writeVInt");
+    if (!ebmlWriteElVInt(elId, (unsigned int)(i & 0xffffffff))) {
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+}
+
+extern "C" void
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1writeBool(JNIEnv *env, jobject thiz, jint elId, jboolean b) {
+    Tracer T("shell_ebml_writeBoolean");
+    if (!ebmlWriteElBool(elId, b)) {
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+}
+
+extern "C" void
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1writeInt(JNIEnv *env, jobject thiz, jint elId, jint i) {
+    Tracer T("shell_ebml_writeInt");
+    if (!ebmlWriteElInt(elId, i)) {
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+}
+
+extern "C" void
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1writeStr(JNIEnv *env, jobject thiz, jint elId, jstring jstr) {
+    Tracer T("shell_ebml_writeString");
+    const char *s = env->GetStringUTFChars(jstr, 0);
+    if (!ebmlWriteElString(elId, strlen(s), (char *)s)) {
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+    env->ReleaseStringUTFChars(jstr, s);
+}
+
+extern "C" void
+Java_com_thomasokken_free42_Free42Activity_shell_1ebml_1writeEod(JNIEnv *env, jobject thiz) {
+    Tracer T("shell_ebml_writeEod");
+    if (!ebmlWriteEndOfDocument()) {
+        jclass exception = env->FindClass("java/lang/Exception");
+        env->ThrowNew(exception, "");
+    }
+}
 
 extern "C" void
 Java_com_thomasokken_free42_Free42Activity_core_1init(JNIEnv *env, jobject thiz, jint read_state, jint version) {
@@ -417,6 +703,50 @@ int shell_read_saved_state(void *buf, int4 bufsize) {
     // Delete local references
     env->DeleteLocalRef(klass);
     env->DeleteLocalRef(buf2);
+    return n;
+}
+int shell_fseek(int4 offset, int mode) {
+    Tracer T("shell_fseek");
+    switch (mode) {
+        case SEEK_SET :
+            mode = 0;
+            break;
+        case SEEK_CUR :
+            mode = 1;
+            break;
+        case SEEK_END :
+            mode = -1;
+        default :
+            return 1;
+    }
+    JNIEnv *env = getJniEnv();
+    jclass klass = env->GetObjectClass(g_activity);
+    jmethodID mid = env->GetMethodID(klass, "shell_fseek", "(II)I");
+    int n = env->CallIntMethod(g_activity, mid, offset, mode);
+    // Delete local references
+    env->DeleteLocalRef(klass);
+    return n;
+}
+
+int shell_ftell() {
+    Tracer T("shell_ftell");
+    JNIEnv *env = getJniEnv();
+    jclass klass = env->GetObjectClass(g_activity);
+    jmethodID mid = env->GetMethodID(klass, "shell_ftell", "()I");
+    int n = env->CallIntMethod(g_activity, mid);
+    // Delete local references
+    env->DeleteLocalRef(klass);
+    return n;
+}
+
+int shell_fsize() {
+    Tracer T("shell_fsize");
+    JNIEnv *env = getJniEnv();
+    jclass klass = env->GetObjectClass(g_activity);
+    jmethodID mid = env->GetMethodID(klass, "shell_fsize", "()I");
+    int n = env->CallIntMethod(g_activity, mid);
+    // Delete local references
+    env->DeleteLocalRef(klass);
     return n;
 }
 

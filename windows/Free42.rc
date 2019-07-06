@@ -101,6 +101,9 @@ BEGIN
                     IDC_WEBSITELINK,31,27,191,8,SS_NOTIFY
     LTEXT           "http://thomasokken.com/free42/42s.pdf",
                     IDC_FORUMLINK,31,37,191,8,SS_NOTIFY
+    LTEXT           "ebml eXtensions", IDC_STATIC,31,52,191,8,SS_LEFT,WS_EX_LEFT
+    LTEXT           "https://github.com/jch42/Free42x",
+                    IDC_XWEBSITELINK,31,75,191,8,SS_LEFT | SS_NOTIFY,WS_EX_LEFT
     DEFPUSHBUTTON   "OK",IDOK,189,6,30,11,WS_GROUP
 END
 

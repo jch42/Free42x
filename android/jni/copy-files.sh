@@ -17,6 +17,8 @@ cp ~/free42/common/core_commands7.cc core_commands7.cc
 cp ~/free42/common/core_commands7.h core_commands7.h
 cp ~/free42/common/core_display.cc core_display.cc
 cp ~/free42/common/core_display.h core_display.h
+cp ~/free42/common/core_ebml.cc core_ebml.cc
+cp ~/free42/common/core_ebml.h core_ebml.h
 cp ~/free42/common/core_globals.cc core_globals.cc
 cp ~/free42/common/core_globals.h core_globals.h
 cp ~/free42/common/core_helpers.cc core_helpers.cc

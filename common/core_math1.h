@@ -1,6 +1,8 @@
 /*****************************************************************************
  * Free42 -- an HP-42S calculator simulator
  * Copyright (C) 2004-2019  Thomas Okken
+ * EBML state file format
+ * Copyright (C) 2018-2019  Jean-Christophe Hessemann
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -19,9 +21,11 @@
 #define CORE_MATH1_H 1
 
 #include "free42.h"
+#include "core_ebml.h"
 #include "core_phloat.h"
 
 bool persist_math();
+bool unpersist_ebml_math(ebmlElement_Struct *el, bool discard);
 bool unpersist_math(bool discard);
 void reset_math();
 

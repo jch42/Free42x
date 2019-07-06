@@ -25,7 +25,6 @@
 #include "core_variables.h"
 #include "shell.h"
 
-
 int resolve_ind_arg(arg_struct *arg) {
     vartype *v;
     switch (arg->type) {
@@ -1206,7 +1205,7 @@ char *phloat2program(phloat d) {
     int alllen;
     int scilen;
     char dot = flags.f.decimal_point ? '.' : ',';
-    int decimal, zeroes, last_nonzero, exponent;
+    int decimal, zeroes = 0, last_nonzero, exponent;
     int i;
     alllen = phloat2string(d, allbuf, 49, 0, 0, 3, 0, MAX_MANT_DIGITS);
     scilen = phloat2string(d, scibuf, 49, 0, MAX_MANT_DIGITS - 1, 1, 0, MAX_MANT_DIGITS);
