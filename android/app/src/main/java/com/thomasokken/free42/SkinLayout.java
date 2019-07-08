@@ -28,6 +28,7 @@ import java.util.Locale;
 import java.util.NoSuchElementException;
 import java.util.StringTokenizer;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -86,11 +87,11 @@ public class SkinLayout {
     private boolean displaySmoothing;
     private boolean maintainSkinAspect;
 
-    public SkinLayout(String skinName, boolean skinSmoothing, boolean displaySmoothing, boolean maintainSkinAspect) {
-        this(skinName, skinSmoothing, displaySmoothing, maintainSkinAspect, null);
+    public SkinLayout(Context ctx, String skinName, boolean skinSmoothing, boolean displaySmoothing, boolean maintainSkinAspect) {
+        this(ctx, skinName, skinSmoothing, displaySmoothing, maintainSkinAspect, null);
     }
     
-    public SkinLayout(String skinName, boolean skinSmoothing, boolean displaySmoothing, boolean maintainSkinAspect, boolean[] ann_state) {
+    public SkinLayout(Context ctx, String skinName, boolean skinSmoothing, boolean displaySmoothing, boolean maintainSkinAspect, boolean[] ann_state) {
         this.skinSmoothing = skinSmoothing;
         this.displaySmoothing = displaySmoothing;
         this.maintainSkinAspect = maintainSkinAspect;
@@ -104,7 +105,7 @@ public class SkinLayout {
             if (skinName.startsWith("/"))
                 is = new FileInputStream(skinName + ".gif");
             else
-                is = getClass().getResourceAsStream(skinName + ".gif");
+                is = ctx.getAssets().open(skinName + ".gif");
             if (is == null)
                 throw new IOException();
             skinBitmap = new BitmapDrawable(is).getBitmap();
@@ -123,7 +124,7 @@ public class SkinLayout {
                 if (skinName.startsWith("/"))
                     is = new FileInputStream(skinName + ".layout");
                 else
-                    is = getClass().getResourceAsStream(skinName + ".layout");
+                    is = ctx.getAssets().open(skinName + ".layout");
                 if (is == null)
                     throw new IOException();
             } catch (IOException e) {
