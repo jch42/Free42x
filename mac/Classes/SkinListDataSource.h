@@ -15,24 +15,21 @@
  * along with this program; if not, see http://www.gnu.org/licenses/.
  *****************************************************************************/
 
-#import <UIKit/UIKit.h>
+#import <Cocoa/Cocoa.h>
 
 
-@interface SelectSkinView : UIView <UITableViewDelegate, UITableViewDataSource> {
-    NSMutableArray *skinNames;
-    UIBarButtonItem *doneButton;
-    UITableView *skinTable;
+@interface SkinListDataSource : NSObject {
+    int count;
+    bool *selected;
+    NSString **names;
 }
 
-@property (nonatomic, retain) IBOutlet UIBarButtonItem *doneButton;
-@property (nonatomic, retain) IBOutlet UITableView *skinTable;
-
-- (void) raised;
-- (IBAction) done;
-- (IBAction) loadSkin;
-- (IBAction) deleteSkin;
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath;
-- (UITableViewCell *) tableView:(UITableView *)table cellForRowAtIndexPath:(NSIndexPath*) indexPath;
-- (NSInteger) tableView:(UITableView *)table numberOfRowsInSection:(NSInteger)section;
+- (void) awakeFromNib;
+- (NSInteger) numberOfRowsInTableView:(NSTableView *)aTableView;
+- (id) tableView:(NSTableView *)aTableView objectValueForTableColumn:(NSTableColumn *)aTableColumn row:(NSInteger)rowIndex;
+- (void) tableView:(NSTableView *)aTableView setObjectValue:anObject forTableColumn:(NSTableColumn *)aTableColumn row:(int)rowIndex;
+- (void) loadSkinNames;
+- (NSString **) getNames;
+- (bool *) getSelection;
 
 @end
