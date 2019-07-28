@@ -206,7 +206,7 @@ int j, sz;
         return false;
     }
     sz += j;
-    j = ebml2VInt(sizeof(phloat), &b[sz]);
+    j = ebml2VInt(sizeof(BID_UINT128), &b[sz]);
     if (j == 0) {
         return false;
     }
@@ -216,7 +216,7 @@ int j, sz;
 #else
     binary64_to_bid128((BID_UINT128*)&b[sz], p);
 #endif
-    sz += sizeof(phloat);
+    sz += sizeof(BID_UINT128);
     return sz;
 }
 
@@ -592,13 +592,13 @@ bool ebmlWriteElString(unsigned int elId, int l, char *val) {
  * write element as phloat
  */
 bool ebmlWriteElPhloat(unsigned int elId, phloat* p) {
-unsigned char buf[sizeof(phloat)];
+unsigned char buf[sizeof(BID_UINT128)];
 #ifdef BCD_MATH
     memcpy(buf, &p->val, sizeof(phloat));
 #else
     binary64_to_bid128((BID_UINT128*)buf, p);
 #endif
-    return ebmlFlushSizedEl((elId & ~0x0f) + EBMLFree42PhloatElement, sizeof(phloat), sizeof(phloat), buf);
+    return ebmlFlushSizedEl((elId & ~0x0f) + EBMLFree42PhloatElement, sizeof(BID_UINT128), sizeof(BID_UINT128), buf);
 }
 
 /*
@@ -1072,11 +1072,11 @@ bool ebmlGetBinary(ebmlElement_Struct *el, void *value, int len) {
 }
 
 bool ebmlGetPhloat(ebmlElement_Struct *el, phloat *p) {
-    unsigned char b[sizeof(phloat)];
+    unsigned char b[sizeof(BID_UINT128)];
     if ((el->elId & 0x07) != EBMLFree42PhloatElement) {
         return false;
     }
-    if (el->elLen != sizeof(phloat)) {
+    if (el->elLen != sizeof(BID_UINT128)) {
         return false;
     }
     if (shell_read_saved_state(b, el->elLen) != el->elLen) {
@@ -1157,8 +1157,8 @@ bool ebmlReadElString(ebmlElement_Struct *el, char *value, int *sz) {
 }
 
 bool ebmlReadElPhloat(ebmlElement_Struct *el, phloat *p) {
-    unsigned char b[sizeof(phloat)];
-    if (ebmlGetEl(el) != 1 || el->elLen != sizeof(phloat)) {
+    unsigned char b[sizeof(BID_UINT128)];
+    if (ebmlGetEl(el) != 1 || el->elLen != sizeof(BID_UINT128)) {
         return false;
     }
     if (shell_read_saved_state(b, el->elLen) != el->elLen) {
@@ -1392,6 +1392,7 @@ bool ebmlReadVar(ebmlElement_Struct *el, var_struct *var) {
                 for (i = 0; i < rows * columns; i++) {
                     if (ebmlGetNext(&argEl)) {
                         free_vartype((vartype *)t.rm);
+
                         return false;
                     }
                     switch (argEl.elId) {

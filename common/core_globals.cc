@@ -2534,7 +2534,7 @@ bool load_ebml_core(int4 ver) {
     if (!ebmlReadElInt(&el, &n2)) {
         err++;
     }
-    random_number_low = n1 + ((_int64)n2 << 32);
+    random_number_low = n1 + ((int8)n2 << 32);
     el.elId = EL_random_number3;
     if (!ebmlReadElInt(&el, &n1)) {
         err++;
@@ -2543,7 +2543,7 @@ bool load_ebml_core(int4 ver) {
     if (!ebmlReadElInt(&el, &n2)) {
         err++;
     }
-    random_number_high = n1 + ((_int64)n2 << 32);
+    random_number_high = n1 + ((int8)n2 << 32);
 
     el.elId = EL_deferred_print;
     if (!ebmlReadElInt(&el, &deferred_print)) {
