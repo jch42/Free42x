@@ -77,7 +77,7 @@ static void init_shell_state(int version);
 static int write_shell_state();
 
 state_type state;
-static FILE* statefile;
+FILE* statefile;
 
 static int quit_flag = 0;
 static int enqueued;
@@ -464,6 +464,8 @@ static CalcView *calcView = nil;
     calcView = self;
     statefile = fopen("config/state", "r");
     int init_mode, version;
+    char core_state_file_name[FILENAMELEN];
+    int core_state_file_offset;
     if (statefile != NULL) {
         if (read_shell_state(&version)) {
             init_mode = 1;
@@ -475,15 +477,21 @@ static CalcView *calcView = nil;
         init_shell_state(-1);
         init_mode = 0;
     }
+    if (init_mode == 1) {
+        if (version > 25) {
+            snprintf(core_state_file_name, FILENAMELEN, "config/%s.f42", state.coreFileName);
+            core_state_file_offset = 0;
+        } else {
+            strcpy(core_state_file_name, "config/state");
+            core_state_file_offset = (int) ftell(statefile);
+        }
+        fclose(statefile);
+    }
 
     long w, h;
     skin_load(&w, &h);
     
-    core_init(init_mode, version);
-    if (statefile != NULL) {
-        fclose(statefile);
-        statefile = NULL;
-    }
+    core_init(init_mode, version, core_state_file_name, core_state_file_offset);
     keep_running = core_powercycle();
     if (keep_running)
         [self startRunner];
@@ -675,6 +683,8 @@ static CLLocationManager *locMgr = NULL;
 /////                   Here beginneth thy olde C code                    /////
 ///////////////////////////////////////////////////////////////////////////////
 
+extern int off_enable_flag;
+
 static int read_shell_state(int *ver) {
     TRACE("read_shell_state");
     int magic;
@@ -682,12 +692,12 @@ static int read_shell_state(int *ver) {
     int state_size;
     int state_version;
     
-    if (shell_read_saved_state(&magic, sizeof(int)) != sizeof(int))
+    if (fread(&magic, 1, sizeof(int), statefile) != sizeof(int))
         return 0;
     if (magic != FREE42_MAGIC)
         return 0;
     
-    if (shell_read_saved_state(&version, sizeof(int)) != sizeof(int))
+    if (fread(&version, 1, sizeof(int), statefile) != sizeof(int))
         return 0;
     if (version == 0) {
         /* State file version 0 does not contain shell state,
@@ -700,14 +710,14 @@ static int read_shell_state(int *ver) {
         /* Unknown state file version */
         return 0;
     
-    if (shell_read_saved_state(&state_size, sizeof(int)) != sizeof(int))
+    if (fread(&state_size, 1, sizeof(int), statefile) != sizeof(int))
         return 0;
-    if (shell_read_saved_state(&state_version, sizeof(int)) != sizeof(int))
+    if (fread(&state_version, 1, sizeof(int), statefile) != sizeof(int))
         return 0;
     if (state_version < 0 || state_version > SHELL_VERSION)
         /* Unknown shell state version */
         return 0;
-    if (shell_read_saved_state(&state, state_size) != state_size)
+    if (fread(&state, 1, state_size, statefile) != state_size)
         return 0;
     
     init_shell_state(state_version);
@@ -744,12 +754,19 @@ static void init_shell_state(int version) {
             state.maintainSkinAspect[1] = 1;
             /* fall through */
         case 5:
-            /* current version (SHELL_VERSION = 5),
+            state.offEnabled = false;
+            /* fall through */
+        case 6:
+            strcpy(state.coreFileName, "Untitled");
+            /* fall through */
+        case 7:
+            /* current version (SHELL_VERSION = 7),
              * so nothing to do here since everything
              * was initialized from the state file.
              */
             ;
     }
+    off_enable_flag = state.offEnabled ? 1 : 0;
 }
 
 static void quit2(bool really_quit) {
@@ -771,17 +788,15 @@ static void quit2(bool really_quit) {
     shell_spool_exit();
 
     mkdir("config", 0755);
-    statefile = fopen("config/state", "w");
-    if (statefile != NULL)
-        write_shell_state();
-    if (really_quit)
-        core_quit();
-    else
-        core_enter_background();
-    if (statefile != NULL)
-        fclose(statefile);
-    if (really_quit)
+    write_shell_state();
+
+    char corefilename[FILENAMELEN];
+    snprintf(corefilename, FILENAMELEN, "config/%s.f42", state.coreFileName);
+    core_save_state(corefilename);
+    if (really_quit) {
+        //core_cleanup();
         exit(0);
+    }
 }
 
 static void shell_keydown() {
@@ -882,18 +897,24 @@ static int write_shell_state() {
     int version = FREE42_VERSION;
     int state_size = sizeof(state);
     int state_version = SHELL_VERSION;
+
+    state.offEnabled = off_enable_flag != 0;
     
-    if (!shell_write_saved_state(&magic, sizeof(int)))
+    FILE *statefile = fopen("config/state", "w");
+    if (statefile == NULL)
         return 0;
-    if (!shell_write_saved_state(&version, sizeof(int)))
+    if (fwrite(&magic, 1, sizeof(int), statefile) != sizeof(int))
         return 0;
-    if (!shell_write_saved_state(&state_size, sizeof(int)))
+    if (fwrite(&version, 1, sizeof(int), statefile) != sizeof(int))
         return 0;
-    if (!shell_write_saved_state(&state_version, sizeof(int)))
+    if (fwrite(&state_size, 1, sizeof(int), statefile) != sizeof(int))
         return 0;
-    if (!shell_write_saved_state(&state, sizeof(state)))
+    if (fwrite(&state_version, 1, sizeof(int), statefile) != sizeof(int))
+        return 0;
+    if (fwrite(&state, 1, sizeof(state), statefile) != sizeof(state))
         return 0;
     
+    fclose(statefile);
     return 1;
 }
 
@@ -975,37 +996,6 @@ void shell_request_timeout3(int delay) {
     pthread_mutex_lock(&shell_helper_mutex);
     timeout3_delay = delay;
     [calcView performSelectorOnMainThread:@selector(shell_request_timeout3_helper) withObject:NULL waitUntilDone:NO];
-}
-
-int shell_read_saved_state(void *buf, int bufsize) {
-    TRACE("shell_read_saved_state");
-    if (statefile == NULL)
-        return -1;
-    else {
-        size_t n = fread(buf, 1, bufsize, statefile);
-        if (n != bufsize && ferror(statefile)) {
-            fclose(statefile);
-            statefile = NULL;
-            return -1;
-        } else
-            return (int) n;
-    }
-}
-
-bool shell_write_saved_state(const void *buf, int nbytes) {
-    TRACE("shell_write_saved_state");
-    if (statefile == NULL)
-        return false;
-    else {
-        size_t n = fwrite(buf, 1, nbytes, statefile);
-        if (n != nbytes) {
-            fclose(statefile);
-            remove("config/state");
-            statefile = NULL;
-            return false;
-        } else
-            return true;
-    }
 }
 
 unsigned int shell_get_mem() {
@@ -1112,8 +1102,6 @@ void shell_print(const char *text, int length,
                 show_message("Message", buf);
                 goto done_print_txt;
             }
-            if (ftell(print_txt) == 0)
-                fwrite("\357\273\277", 1, 3, print_txt);
         }
         
         if (text != NULL)
@@ -1218,16 +1206,6 @@ void shell_print(const char *text, int length,
             print_text_top -= PRINT_TEXT_SIZE;
     }
 }
-
-/*
-int shell_write(const char *buf, int buflen) {
-    return 0;
-}
-
-int shell_read(char *buf, int buflen) {
-    return -1;
-}
-*/
 
 //////////////////////////////////////////////////////////////////////
 /////   Accelerometer, Location Services, and Compass support    /////

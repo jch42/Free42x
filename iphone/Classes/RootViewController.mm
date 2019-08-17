@@ -58,7 +58,7 @@ static RootViewController *instance;
 
     const char *sound_names[] = { "tone0", "tone1", "tone2", "tone3", "tone4", "tone5", "tone6", "tone7", "tone8", "tone9", "squeak" };
     for (int i = 0; i < 11; i++) {
-        NSString *name = [NSString stringWithCString:sound_names[i] encoding:NSUTF8StringEncoding];
+        NSString *name = [NSString stringWithUTF8String:sound_names[i]];
         NSString *path = [[NSBundle mainBundle] pathForResource:name ofType:@"wav"];
         OSStatus status = AudioServicesCreateSystemSoundID((CFURLRef)[NSURL fileURLWithPath:path], &soundIDs[i]);
         if (status)
@@ -180,6 +180,10 @@ int shell_low_battery() {
     [errorAlert release];
 }
 
+void shell_message(const char *message) {
+    [RootViewController showMessage:[NSString stringWithUTF8String:message]];
+}
+
 + (void) playSound: (int) which {
     AudioServicesPlaySystemSound(soundIDs[which]);
 }
@@ -249,33 +253,8 @@ int shell_low_battery() {
     [SelectFileView raiseWithTitle:@"Import Programs" selectTitle:@"Import" types:@"raw,*" selectDir:NO callbackObject:instance callbackSelector:@selector(doImport2:)];
 }
 
-static FILE *import_file;
-
-static int my_shell_read(char *buf, int buflen) {
-    ssize_t nread;
-    if (import_file == NULL)
-        return -1;
-    nread = fread(buf, 1, buflen, import_file);
-    if (nread != buflen && ferror(import_file)) {
-        fclose(import_file);
-        import_file = NULL;
-        [RootViewController showMessage:@"An error occurred while reading the file; import was terminated prematurely."];
-        return -1;
-    } else
-        return (int) nread;
-}
-
 - (void) doImport2:(NSString *) path {
-    import_file = fopen([path cStringUsingEncoding:NSUTF8StringEncoding], "r");
-    if (import_file == NULL) {
-        [RootViewController showMessage:@"The file could not be opened."];
-    } else {
-        import_programs(my_shell_read);
-        if (import_file != NULL) {
-            fclose(import_file);
-            import_file = NULL;
-        }
-    }
+    core_import_programs(0, [path UTF8String]);
 }
 
 + (void) doExport {
@@ -302,25 +281,3 @@ static int my_shell_read(char *buf, int buflen) {
 }
 
 @end
-
-static int (*writer_callback)(const char *buf, int buflen);
-
-int shell_write(const char *buf, int buflen) {
-    return writer_callback(buf, buflen);
-}
-
-void export_programs(int count, const int *indexes, int (*writer)(const char *buf, int buflen)) {
-    writer_callback = writer;
-    core_export_programs(count, indexes);
-}
-
-static int (*reader_callback)(char *buf, int buflen);
-
-int shell_read(char *buf, int buflen) {
-    return reader_callback(buf, buflen);
-}
-
-void import_programs(int (*reader)(char *buf, int buflen)) {
-    reader_callback = reader;
-    core_import_programs();
-}
