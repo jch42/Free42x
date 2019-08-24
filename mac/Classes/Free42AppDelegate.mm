@@ -292,6 +292,17 @@ static void low_battery_checker(CFRunLoopTimerRef timer, void *info) {
             core_state_file_offset = ftell(statefile);
         }
         fclose(statefile);
+    }  else {
+        // The shell state was missing or corrupt, but there
+        // may still be a valid core state...
+        snprintf(core_state_file_name, FILENAMELEN, "%s/%s.f42", free42dirname, state.coreName);
+        struct stat st;
+        if (stat(core_state_file_name, &st) == 0) {
+            // Core state "Untitled.f42" exists; let's try to read it
+            core_state_file_offset = 0;
+            init_mode = 1;
+            version = 26;
+        }
     }
 
 #ifdef BCD_MATH
@@ -959,6 +970,8 @@ static char version[32] = "";
     char corefilename[FILENAMELEN];
     snprintf(corefilename, FILENAMELEN, "%s/%s.f42", free42dirname, state.coreName);
     core_init(1, 26, corefilename, 0);
+    if (core_powercycle())
+        [instance startRunner];
 }
 
 - (void) mouseDown3 {

@@ -31,7 +31,6 @@ using std::sort;
 static ci_string stateLabel;
 static ci_string stateName;
 static vector<ci_string> stateNames;
-static bool *selection = NULL;
 static ci_string selectedStateName;
 
 HMENU moreMenu = NULL;
@@ -54,14 +53,7 @@ static void loadStateNames() {
 		} while (FindNextFile(search, &wfd));
 		FindClose(search);
 	}
-	if (selection != NULL)
-		delete[] selection;
-	int n = stateNames.size();
-	selection = new bool[n];
-	for (int i = 0; i < n; i++)
-		selection[i] = false;
 
-	// TODO: Case insensitive sorting!
 	std::sort(stateNames.begin(), stateNames.end());
 }
 
@@ -87,6 +79,17 @@ static LRESULT CALLBACK StateNameDlgProc(HWND hDlg, UINT message, WPARAM wParam,
         case WM_INITDIALOG: {
             SetDlgItemText(hDlg, IDC_STATE_PROMPT, stateLabel.c_str());
             SetDlgItemText(hDlg, IDC_STATE_NAME, "");
+
+            // Make sure a file exists for the current state. This isn't necessarily
+            // the case, specifically, right after starting up with a version <= 25
+            // state file.
+            ci_string currentStateName = ci_string(free42dirname) + "/" + state.coreName + ".f42";
+            const char *currentStateNameC = currentStateName.c_str();
+            if (GetFileAttributes(currentStateNameC) == INVALID_FILE_ATTRIBUTES) {
+                FILE *f = fopen(currentStateNameC, "wb");
+                fwrite("24kF", 1, 4, f);
+                fclose(f);
+            }
 			return TRUE;
 		}
         case WM_COMMAND: {
@@ -135,32 +138,15 @@ static void updateUI(HWND hDlg, bool rescan) {
 				index = i;
 			i++;
 		}
-		if (index != -1) {
-			SendMessage(list, LB_SETSEL, TRUE, index);
-			selection[index] = true;
-		}
-	} else {
-		// If we're not rescanning, we were called because of
-		// a selection change. We're using a multi-select box
-		// to create a single-select with deselect capability,
-		// which means we have a bit of work to do here.
-		int n = stateNames.size();
-		int index = -1;
-		for (int i = 0; i < n; i++) {
-			bool sel = SendMessage(list, LB_GETSEL, i, 0) > 0;
-			if (sel != selection[i]) {
-				if (sel) {
-					SendMessage(list, LB_SETSEL, FALSE, -1);
-					SendMessage(list, LB_SETSEL, TRUE, i);
-					for (int j = 0; j < n; j++)
-						selection[j] = false;
-				}
-				selection[i] = sel;
-				selectedStateName = sel ? stateNames[i] : "";
-				break;
-			}
-		}
+		if (index != -1)
+            SendMessage(list, LB_SETCURSEL, index, 0);
 	}
+	
+	int index = SendMessage(list, LB_GETCURSEL, 0, 0);
+    if (index == LB_ERR)
+		selectedStateName = "";
+    else
+        selectedStateName = stateNames[index];
 
 	HWND switchToButton = GetDlgItem(hDlg, IDOK);
 	bool stateSelected;
@@ -203,7 +189,8 @@ static void switchTo(HWND hDlg) {
 	path += state.coreName;
 	path += ".f42";
 	core_init(1, 26, path.c_str(), 0);
-    EndDialog(hDlg, 0);
+    int running = core_powercycle();
+    EndDialog(hDlg, running);
 }
 
 static void doNew(HWND hDlg) {
@@ -351,7 +338,7 @@ static void doImport(HWND hDlg) {
                     "Import State",
                     0,
                     "Free42 State (*.f42)\0*.f42\0All Files (*.*)\0*.*\0\0",
-                    "f42",
+                    NULL,
                     buf,
                     FILENAMELEN))
 		return;
@@ -405,6 +392,7 @@ LRESULT CALLBACK StatesDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			ci_string txt("Current: ");
 			txt += state.coreName;
             SetDlgItemText(hDlg, IDC_CURRENT, txt.c_str());
+			selectedStateName = "";
 			updateUI(hDlg, true);
 			return TRUE;
 		}

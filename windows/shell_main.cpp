@@ -378,6 +378,16 @@ static BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 			core_state_file_offset = ftell(statefile);
 		}
         fclose(statefile);
+	} else {
+		// The shell state was missing or corrupt, but there
+		// may still be a valid core state...
+        sprintf(core_state_file_name, "%s\\%s.f42", free42dirname, state.coreName);
+		if (GetFileAttributes(core_state_file_name) != INVALID_FILE_ATTRIBUTES) {
+			// Core state "Untitled.f42" exists; let's try to read it
+			core_state_file_offset = 0;
+			init_mode = 1;
+			version = 26;
+		}
     }
 
     if (state.singleInstance) {
@@ -538,7 +548,7 @@ static LRESULT CALLBACK MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPAR
             // Parse the menu selections:
             switch (wmId) {
 				case IDM_STATES:
-                    DialogBox(hInst, (LPCTSTR)IDD_STATES, hWnd, (DLGPROC)StatesDlgProc);
+                    running = DialogBox(hInst, (LPCTSTR)IDD_STATES, hWnd, (DLGPROC)StatesDlgProc);
                     break;
                 case IDM_SHOWPRINTOUT:
                     show_printout();

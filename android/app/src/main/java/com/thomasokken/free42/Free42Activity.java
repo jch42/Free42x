@@ -19,7 +19,6 @@ package com.thomasokken.free42;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -264,12 +263,22 @@ public class Free42Activity extends Activity {
                 coreFileName = getFilesDir() + "/" + coreName + ".f42";
                 coreFileOffset = 0;
             } else {
-                coreFileName = "state";
+                coreFileName = getFilesDir() + "/state";
                 coreFileOffset = stateFileInputStream.getPosition();
             }
             try {
                 stateFileInputStream.close();
             } catch (IOException e) {}
+        }  else {
+            // The shell state was missing or corrupt, but there
+            // may still be a valid core state...
+            coreFileName = getFilesDir() + "/" + coreName + ".f42";
+            if (new File(coreFileName).isFile()) {
+                // Core state "Untitled.f42" exists; let's try to read it
+                coreFileOffset = 0;
+                init_mode = 1;
+                version.value = 26;
+            }
         }
 
         setAlwaysRepaintFullDisplay(alwaysRepaintFullDisplay);
@@ -540,6 +549,7 @@ public class Free42Activity extends Activity {
             itemsList.add("Show Print-Out");
             itemsList.add("Import Programs");
             itemsList.add("Export Programs");
+            itemsList.add("States");
             itemsList.add("Preferences");
             itemsList.add("Select Skin");
             itemsList.add("Skin: Other...");
@@ -570,21 +580,24 @@ public class Free42Activity extends Activity {
                 doExport();
                 return;
             case 3:
-                doPreferences();
+                doStates();
                 return;
             case 4:
+                doPreferences();
+                return;
+            case 5:
                 doSelectSkin();
                 break;
-            case 5:
+            case 6:
                 doSkinOther();
                 break;
-            case 6:
+            case 7:
                 doCopy();
                 return;
-            case 7:
+            case 8:
                 doPaste();
                 return;
-            case 8:
+            case 9:
                 doAbout();
                 return;
             // default: Cancel; do nothing
@@ -623,6 +636,31 @@ public class Free42Activity extends Activity {
 
     public static String[] getSelectedSkins() {
         return instance.skinName;
+    }
+
+    public static String getSelectedState() {
+        return instance.coreName;
+    }
+
+    public static void switchToState(String stateName) {
+        instance.switchToState2(stateName);
+    }
+
+    private void switchToState2(String stateName) {
+        if (!stateName.equals(coreName)) {
+            String oldFileName = getFilesDir() + "/" + coreName + ".f42";
+            core_save_state(oldFileName);
+        }
+        core_cleanup();
+        coreName = stateName;
+        String newFileName = getFilesDir() + "/" + coreName + ".f42";
+        core_init(1, 26, newFileName, 0);
+        if (core_powercycle())
+            start_core_keydown();
+    }
+
+    public static void saveStateAs(String fileName) {
+        instance.core_save_state(fileName);
     }
 
     private void doCopy() {
@@ -705,6 +743,11 @@ public class Free42Activity extends Activity {
         builder.setPositiveButton("OK", listener);
         builder.setNegativeButton("Cancel", null);
         builder.create().show();
+    }
+
+    private void doStates() {
+        StatesDialog sd = new StatesDialog(this);
+        sd.show();
     }
     
     private void doProgramSelectionClick(DialogInterface dialog, int which) {
