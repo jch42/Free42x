@@ -130,6 +130,11 @@ public class Free42Activity extends Activity {
     // Stuff to run core_keydown() on a background thread
     private CoreThread coreThread;
     private boolean coreWantsCpu;
+
+    // Show "States" dialog if invoked after state import; this
+    // will have the name of the most recently imported state.
+    // If this is null, don't do anything.
+    public String importedState;
     
     private int ckey;
     private boolean timeout3_active;
@@ -237,6 +242,9 @@ public class Free42Activity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         instance = this;
+
+        Intent intent = getIntent();
+        importedState = intent.getStringExtra("importedState");
         
         int init_mode;
         IntHolder version = new IntHolder();
@@ -408,6 +416,11 @@ public class Free42Activity extends Activity {
             start_core_keydown();
         
         super.onStart();
+
+        String impSt = importedState;
+        importedState = null;
+        if (impSt != null)
+            doStates(impSt);
     }
     
     @Override
@@ -540,7 +553,7 @@ public class Free42Activity extends Activity {
         mainHandler.removeCallbacks(timeout3Caller);
         timeout3_active = false;
     }
-    
+
     private void postMainMenu() {
         if (mainMenuDialog == null) {
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -580,7 +593,7 @@ public class Free42Activity extends Activity {
                 doExport();
                 return;
             case 3:
-                doStates();
+                doStates(null);
                 return;
             case 4:
                 doPreferences();
@@ -745,8 +758,8 @@ public class Free42Activity extends Activity {
         builder.create().show();
     }
 
-    private void doStates() {
-        StatesDialog sd = new StatesDialog(this);
+    private void doStates(String selectedState) {
+        StatesDialog sd = new StatesDialog(this, selectedState);
         sd.show();
     }
     

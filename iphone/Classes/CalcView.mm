@@ -22,6 +22,7 @@
 
 #import <AudioToolbox/AudioServices.h>
 #import <CoreLocation/CoreLocation.h>
+#import <CoreMotion/CoreMotion.h>
 
 #import "CalcView.h"
 #import "PrintView.h"
@@ -130,12 +131,10 @@ static bool is_file(const char *name);
 /////   Accelerometer, Location Services, and Compass support    /////
 //////////////////////////////////////////////////////////////////////
 
-static double accel_x = 0, accel_y = 0, accel_z = 0;
 static double loc_lat = 0, loc_lon = 0, loc_lat_lon_acc = -1, loc_elev = 0, loc_elev_acc = -1;
 static double hdg_mag = 0, hdg_true = 0, hdg_acc = -1, hdg_x = 0, hdg_y = 0, hdg_z = 0;
 
-@interface HardwareDelegate : NSObject <UIAccelerometerDelegate, CLLocationManagerDelegate> {}
-- (void)accelerometer:(UIAccelerometer *)accelerometer didAccelerate:(UIAcceleration *)acceleration;
+@interface HardwareDelegate : NSObject <CLLocationManagerDelegate> {}
 - (void)locationManager:(CLLocationManager *)manager didUpdateToLocation:(CLLocation *)newLocation fromLocation:(CLLocation *)oldLocation;
 - (void)locationManager:(CLLocationManager *)manager didFailWithError:(NSError *)error;
 - (void)locationManager:(CLLocationManager *)manager didUpdateHeading:(CLHeading *)newHeading;
@@ -143,13 +142,6 @@ static double hdg_mag = 0, hdg_true = 0, hdg_acc = -1, hdg_x = 0, hdg_y = 0, hdg
 @end
 
 @implementation HardwareDelegate
-
-- (void)accelerometer:(UIAccelerometer *)accelerometer didAccelerate:(UIAcceleration *)acceleration {
-    accel_x = acceleration.x;
-    accel_y = acceleration.y;
-    accel_z = acceleration.z;
-    NSLog(@"Acceleration received: %g %g %g", accel_x, accel_y, accel_z);
-}
 
 - (void)locationManager:(CLLocationManager *)manager didUpdateToLocation:(CLLocation *)newLocation fromLocation:(CLLocation *)oldLocation {
     loc_lat = newLocation.coordinate.latitude;
@@ -220,7 +212,7 @@ static CalcView *calcView = nil;
     UIActionSheet *menu =
     [[UIActionSheet alloc] initWithTitle:@"Main Menu"
                                 delegate:self cancelButtonTitle:@"Cancel" destructiveButtonTitle:nil
-                       otherButtonTitles:@"States", @"Show Print-Out", @"Program Import & Export", @"Preferences", @"Select Skin", @"Copy", @"Paste", @"About Free42", nil];
+                       otherButtonTitles:@"Show Print-Out", @"Program Import & Export", @"States", @"Preferences", @"Select Skin", @"Copy", @"Paste", @"About Free42", nil];
     
     [menu showInView:self];
     [menu release];
@@ -240,16 +232,16 @@ static CalcView *calcView = nil;
     if ([[actionSheet title] isEqualToString:@"Main Menu"]) {
         switch (buttonIndex) {
             case 0:
-                // States
-                [RootViewController showStates];
-                break;
-            case 1:
                 // Show Print-Out
                 [RootViewController showPrintOut];
                 break;
-            case 2:
+            case 1:
                 // Program Import & Export
                 [self showImportExportMenu];
+                break;
+            case 2:
+                // States
+                [RootViewController showStates];
                 break;
             case 3:
                 // Preferences
@@ -514,6 +506,21 @@ static CalcView *calcView = nil;
         [UIApplication sharedApplication].idleTimerDisabled = YES;
 }
 
++ (void) loadState:(const char *)name {
+    if (strcmp(name, state.coreName) != 0) {
+        char corefilename[FILENAMELEN];
+        snprintf(corefilename, FILENAMELEN, "config/%s.f42", state.coreName);
+        core_save_state(corefilename);
+    }
+    core_cleanup();
+    strcpy(state.coreName, name);
+    char corefilename[FILENAMELEN];
+    snprintf(corefilename, FILENAMELEN, "config/%s.f42", state.coreName);
+    core_init(1, 26, corefilename, 0);
+    if (core_powercycle())
+        [calcView startRunner];
+}
+
 - (void) runner {
     TRACE("runner");
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
@@ -626,21 +633,22 @@ static int timeout3_delay;
     }
 }
 
-static HardwareDelegate *hwDel = NULL;
-static CLLocationManager *locMgr = NULL;
+static HardwareDelegate *hwDel = nil;
+static CMMotionManager *motMgr = nil;
+static CLLocationManager *locMgr = nil;
 
 - (void) start_accelerometer {
-    UIAccelerometer *am = [UIAccelerometer sharedAccelerometer];
-    am.updateInterval = 1;
-    if (hwDel == NULL)
-        hwDel = [HardwareDelegate alloc];
-    am.delegate = hwDel;
+    if (motMgr == nil) {
+        motMgr = [[CMMotionManager alloc] init];
+        motMgr.accelerometerUpdateInterval = 1;
+        [motMgr startAccelerometerUpdates];
+    }
 }
 
 - (void) start_location {
-    if (locMgr == NULL) {
+    if (locMgr == nil) {
         locMgr = [[CLLocationManager alloc] init];
-        if (hwDel == NULL)
+        if (hwDel == nil)
             hwDel = [HardwareDelegate alloc];
         locMgr.delegate = hwDel;
     }
@@ -1232,9 +1240,14 @@ int shell_get_acceleration(double *x, double *y, double *z) {
         accelerometer_active = true;
         [calcView performSelectorOnMainThread:@selector(start_accelerometer) withObject:NULL waitUntilDone:NO];
     }
-    *x = accel_x;
-    *y = accel_y;
-    *z = accel_z;
+    CMAccelerometerData *cmd = [motMgr accelerometerData];
+    if (cmd == nil) {
+        *x = *y = *z = 0;
+    } else {
+        *x = cmd.acceleration.x;
+        *y = cmd.acceleration.y;
+        *z = cmd.acceleration.z;
+    }
     return 1;
 }
 

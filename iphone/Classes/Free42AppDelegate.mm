@@ -16,9 +16,12 @@
  *****************************************************************************/
 
 #import <AudioToolbox/AudioServices.h>
+#import <sys/stat.h>
+#import <dirent.h>
 
 #import "Free42AppDelegate.h"
 #import "RootViewController.h"
+#import "StatesView.h"
 
 static Free42AppDelegate *instance;
 static char version[32] = "";
@@ -58,6 +61,34 @@ static char version[32] = "";
         fclose(vfile);
     }   
     return version;
+}
+
+- (BOOL) application:(UIApplication *)app
+            openURL:(NSURL *)url
+            options:(NSDictionary<UIApplicationOpenURLOptionsKey, id> *)options; {
+    // We ignore the URL and just handle all files with names
+    // ending in .f42 or .F42 that happen to be in our Inbox.
+    DIR *dir = opendir("Inbox");
+    struct dirent *d;
+    NSMutableArray *fromNames = [NSMutableArray array];
+    while ((d = readdir(dir)) != NULL) {
+        size_t len = strlen(d->d_name);
+        if (len < 5 || strcasecmp(d->d_name + len - 4, ".f42") != 0)
+            continue;
+        [fromNames addObject:[NSString stringWithUTF8String:d->d_name]];
+    }
+    closedir(dir);
+    for (int i = 0; i < [fromNames count]; i++) {
+        NSString *fromName = [fromNames objectAtIndex:i];
+        NSString *fromPath = [NSString stringWithFormat:@"Inbox/%@", fromName];
+        fromName = [fromName substringToIndex:[fromName length] - 4];
+        NSString *toPath = [NSString stringWithFormat:@"config/%@.f42", fromName];
+        struct stat st;
+        if (stat([toPath UTF8String], &st) == 0)
+            toPath = [NSString stringWithFormat:@"config/%@.f42", [StatesView makeCopyName:fromName]];
+        rename([fromPath UTF8String], [toPath UTF8String]);
+    }
+    return YES;
 }
 
 @end

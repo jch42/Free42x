@@ -51,7 +51,7 @@ public class StatesDialog extends Dialog {
     private Button switchToButton;
     private String stateDirName;
 
-    public StatesDialog(Context ctx) {
+    public StatesDialog(Context ctx, String selectedState) {
         super(ctx);
         setContentView(R.layout.states_dialog);
         getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT,
@@ -82,21 +82,12 @@ public class StatesDialog extends Dialog {
         statesList = (ListView) findViewById(R.id.statesView);
         statesList.setChoiceMode(AbsListView.CHOICE_MODE_SINGLE);
         stateDirName = ctx.getFilesDir().getAbsolutePath();
-        List<String> states = getLoadedStates(stateDirName);
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(ctx,
-                android.R.layout.simple_list_item_1, android.R.id.text1, states);
-        statesList.setAdapter(adapter);
-        statesList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                selectionChanged();
-            }
-        });
         setTitle("States");
 
         // Make sure a file exists for the current state. This isn't necessarily
         // the case, specifically, right after starting up with a version <= 25
         // state file.
-        String currentStateFileName = stateDirName + "/" + Free42Activity.getSelectedState();
+        String currentStateFileName = stateDirName + "/" + Free42Activity.getSelectedState() + ".f42";
         if (!new File(currentStateFileName).exists()) {
             OutputStream os = null;
             try {
@@ -111,6 +102,27 @@ public class StatesDialog extends Dialog {
                     } catch (IOException e) {}
             }
         }
+
+        List<String> states = getLoadedStates(stateDirName);
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(ctx,
+                android.R.layout.simple_list_item_1, android.R.id.text1, states);
+        statesList.setAdapter(adapter);
+        statesList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                selectionChanged();
+            }
+        });
+        // At this point, I would like to select the state that was just
+        // imported. However, when I do so, it comes up black-on-black.
+        // Click on it, and it is highlighted just fine; try to select it
+        // programmatically, and it's black-on-black. Thanks, Android.
+        /*
+        if (selectedState != null) {
+            int sel = states.indexOf(selectedState);
+            if (sel != -1)
+                statesList.setItemChecked(sel, true);
+        }
+        */
 
         // Force initial update
         selectionChanged();
@@ -163,6 +175,10 @@ public class StatesDialog extends Dialog {
 
     private void doNew2(String newStateName) {
         String newFileName = stateDirName + "/" + newStateName + ".f42";
+        if (new File(newFileName).exists()) {
+            Free42Activity.showAlert("That name is already in use.");
+            return;
+        }
         FileOutputStream fos = null;
         try {
             fos = new FileOutputStream(newFileName);
@@ -178,16 +194,12 @@ public class StatesDialog extends Dialog {
         updateUI(true);
     }
 
-    private void doDuplicate() {
-        String selectedStateName = getSelectedState();
-        if (selectedStateName == null)
-            return;
-
+    private String makeCopyName(String name) {
         // We're naming duplicates by appending " copy" or " copy NNN" to the name
         // of the original, but if the name of the original already ends with " copy"
         // or " copy NNN", it seems more elegant to continue the sequence rather than
         // add another " copy" suffix.
-        String copyName = selectedStateName;
+        String copyName = name;
         int n = 0;
         if (copyName.endsWith(" copy")) {
             copyName = copyName.substring(0, copyName.length() - 5);
@@ -210,30 +222,36 @@ public class StatesDialog extends Dialog {
         while (true) {
             n++;
             if (n == 1)
-                finalName = copyName + " copy.f42";
+                finalName = copyName + " copy";
             else
-                finalName = copyName + " copy " + n + ".f42";
-            finalPath = stateDirName + "/" + finalName;
+                finalName = copyName + " copy " + n;
+            finalPath = stateDirName + "/" + finalName + ".f42";
             if (!new File(finalPath).exists())
                 // File does not exist; that means we have a usable name
                 break;
         }
 
-        // Once we get here, finalName contains a valid name for creating the duplicate.
-        // What we do next depends on whether the selected state is the currently active
-        // one. If it is, we'll call core_save_state(), to make sure the duplicate
-        // actually matches the most up-to-date state; otherwise, we can simply copy
-        // the existing state file.
+        return finalName;
+    }
+
+    private void doDuplicate() {
+        String selectedStateName = getSelectedState();
+        if (selectedStateName == null)
+            return;
+
+        String finalName = makeCopyName(selectedStateName);
+        String finalPath = stateDirName + "/" + finalName + ".f42";
         if (selectedStateName.equals(Free42Activity.getSelectedState()))
             Free42Activity.saveStateAs(finalPath);
         else {
-            String origPath = stateDirName + "/" + getSelectedState() + ".f42";
+            String origPath = stateDirName + "/" + selectedStateName + ".f42";
             FileInputStream fis = null;
             FileOutputStream fos = null;
             try {
                 fis = new FileInputStream(origPath);
                 fos = new FileOutputStream(finalPath);
                 byte[] buf = new byte[1024];
+                int n;
                 while ((n = fis.read(buf)) > 0)
                     fos.write(buf, 0, n);
             } catch (IOException e) {
@@ -263,6 +281,10 @@ public class StatesDialog extends Dialog {
             return;
         String oldpath = stateDirName + "/" + selectedStateName + ".f42";
         String newpath = stateDirName + "/" + newStateName + ".f42";
+        if (new File(newpath).exists()) {
+            Free42Activity.showAlert("That name is already in use.");
+            return;
+        }
         new File(oldpath).renameTo(new File(newpath));
         if (selectedStateName.equals(Free42Activity.getSelectedState())) {
             currentLabel.setText("Current: " + newStateName);
@@ -271,6 +293,22 @@ public class StatesDialog extends Dialog {
     }
 
     private void doDelete() {
+        String selectedStateName = getSelectedState();
+        if (selectedStateName == null || selectedStateName.equals(Free42Activity.getSelectedState()))
+            return;
+        new AlertDialog.Builder(getContext())
+                .setTitle("Confirm Delete")
+                .setMessage("Are you sure you want to delete the state \"" + selectedStateName + "\"?")
+                .setIcon(android.R.drawable.ic_dialog_info)
+                .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        doDelete2();
+                    }
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private void doDelete2() {
         String selectedStateName = getSelectedState();
         if (selectedStateName == null || selectedStateName.equals(Free42Activity.getSelectedState()))
             return;
@@ -298,10 +336,8 @@ public class StatesDialog extends Dialog {
         if (len > 4 && name.endsWith(".f42"))
             name = name.substring(0, len - 4);
         String destPath = getContext().getFilesDir() + "/" + name + ".f42";
-        if (new File(destPath).exists()) {
-            Free42Activity.showAlert("A state named \"" + name + "\" already exists.");
-            return;
-        }
+        if (new File(destPath).exists())
+            destPath = getContext().getFilesDir() + "/" + makeCopyName(name) + ".f42";
         InputStream is = null;
         OutputStream os = null;
         boolean failed = true;

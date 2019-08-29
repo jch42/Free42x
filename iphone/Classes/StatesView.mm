@@ -16,9 +16,12 @@
  *****************************************************************************/
 
 #import <dirent.h>
+#import <sys/stat.h>
+#import <stdlib.h>
 #import "CalcView.h"
 #import "StatesView.h"
 #import "RootViewController.h"
+#import "core_main.h"
 
 
 @implementation StatesView
@@ -46,9 +49,22 @@
 
 - (void) raised {
     // This gets called just before the view is raised, every time
+    
+    // In case we're called right after an upgrade from < 2.5, or right
+    // after a fresh install, make sure that at least a dummy file exists
+    // for the current state, so that the initial states list won't be
+    // empty.
+    NSString *currentStateFileName = [NSString stringWithFormat:@"config/%@.f42", [NSString stringWithUTF8String:state.coreName]];
+    const char *currentStateFileNameC = [currentStateFileName UTF8String];
+    struct stat st;
+    if (stat(currentStateFileNameC, &st) != 0) {
+        FILE *f = fopen(currentStateFileNameC, "w");
+        fwrite("24kF", 1, 4, f);
+        fclose(f);
+    }
+
     [stateNames removeAllObjects];
     int index = 0;
-    selectedIndex = -1;
     DIR *dir = opendir("config");
     struct dirent *d;
     while ((d = readdir(dir)) != NULL) {
@@ -58,11 +74,18 @@
         d->d_name[len - 4] = 0;
         NSString *s = [NSString stringWithUTF8String:d->d_name];
         [stateNames addObject:s];
-        if (strcasecmp(d->d_name, state.coreName) == 0)
-            selectedIndex = index;
         index++;
     }
     closedir(dir);
+    [stateNames sortUsingSelector:@selector(compare:)];
+    selectedIndex = -1;
+    NSString *core = [NSString stringWithUTF8String:state.coreName];
+    for (int i = 0; i < [stateNames count]; i++)
+        if ([[stateNames objectAtIndex:i] compare:core] == NSOrderedSame) {
+            selectedIndex = i;
+            break;
+        }
+
     [switchToButton setEnabled:NO];
     [switchToButton setTitle:@"Switch To"];
     mode = 0;
@@ -70,7 +93,11 @@
 }
 
 - (IBAction) switchTo {
-    
+    NSString *name = [self selectedStateName];
+    if (name == nil)
+        return;
+    [CalcView loadState:[name UTF8String]];
+    [RootViewController showMain];
 }
 
 - (IBAction) more {
@@ -94,30 +121,207 @@
     [RootViewController showMain];
 }
 
-- (void) doNew {
+- (NSString *) selectedStateName {
+    NSIndexPath *index = [stateTable indexPathForSelectedRow];
+    if (index == nil)
+        return nil;
+    int idx = (int) [index indexAtPosition:1];
+    return [stateNames objectAtIndex:idx];
+}
 
+- (void) getNewStateNameWithCompletion:(SEL)sel {
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"State Name"
+               message:@"Enter new state name:"
+               preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil];
+    UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        NSString *s = alert.textFields.firstObject.text;
+        [self performSelector:sel withObject:s];
+    }];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {}];
+    [alert addAction:cancelAction];
+    [alert addAction:okAction];
+    [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
+}
+
+- (void) doNew {
+    [self getNewStateNameWithCompletion:@selector(doNew2:)];
+}
+
+- (void) doNew2:(NSString *)name {
+    if ([name length] == 0 || [name containsString:@"/"]) {
+        [RootViewController showMessage:@"That name is not valid."];
+        return;
+    }
+    NSString *fname = [NSString stringWithFormat:@"config/%@.f42", name];
+    const char *cname = [fname UTF8String];
+    struct stat st;
+    if (stat(cname, &st) == 0) {
+        [RootViewController showMessage:@"That name is already in use."];
+        return;
+    }
+    FILE *f = fopen(cname, "w");
+    fwrite("24kF", 1, 4, f);
+    fclose(f);
+    [self raised];
+}
+
+- (BOOL) copyStateFrom:(const char *)orig_name to:(const char *)copy_name {
+    FILE *fin = fopen(orig_name, "r");
+    FILE *fout = fopen(copy_name, "w");
+    if (fin != NULL && fout != NULL) {
+        char buf[1024];
+        size_t n;
+        while ((n = fread(buf, 1, 1024, fin)) > 0)
+            fwrite(buf, 1, n, fout);
+        if (ferror(fin) || ferror(fout))
+            goto duplication_failed;
+        fclose(fin);
+        fclose(fout);
+        return YES;
+    } else {
+        duplication_failed:
+        if (fin != NULL)
+            fclose(fin);
+        if (fout != NULL)
+            fclose(fout);
+        remove(copy_name);
+        return NO;
+    }
+}
+
++ (NSString *) makeCopyName:(NSString *)name {
+    // We're naming duplicates by appending " copy" or " copy NNN" to the name
+    // of the original, but if the name of the original already ends with " copy"
+    // or " copy NNN", it seems more elegant to continue the sequence rather than
+    // add another " copy" suffix.
+    NSString *copyName = name;
+    int n = 0;
+    if ([[copyName substringFromIndex:[copyName length] - 5] compare:@" copy"] == NSOrderedSame) {
+        copyName = [copyName substringToIndex:[copyName length] - 5];
+        n = 1;
+    } else {
+        NSRange cpos = [copyName rangeOfString:@" copy " options:NSBackwardsSearch];
+        if (cpos.location != NSNotFound) {
+            // We don't just want to parse a number from the part following
+            // " copy "; we want to make sure that there is nothing but a
+            // number there, hence this somewhat elaborate logic.
+            NSString *suffix = [copyName substringFromIndex:cpos.location + 6];
+            int m = (int) [suffix integerValue];
+            if (m > 1) {
+                NSString *s2 = [NSString stringWithFormat:@"%d", m];
+                if ([suffix isEqualToString:s2]) {
+                    n = m;
+                    copyName = [copyName substringToIndex:cpos.location];
+                }
+            }
+        }
+    }
+    
+    NSString *finalName, *finalPath;
+    
+    while (true) {
+        n++;
+        if (n == 1)
+            finalName = [NSString stringWithFormat:@"%@ copy", copyName];
+        else
+            finalName = [NSString stringWithFormat:@"%@ copy %d", copyName, n];
+        finalPath = [NSString stringWithFormat:@"config/%@.f42", finalName];
+        struct stat st;
+        if (stat([finalPath UTF8String], &st) != 0)
+            // File does not exist; that means we have a usable name
+            break;
+    }
+    
+    return finalName;
 }
 
 - (void) doDuplicate {
-
+    NSString *name = [self selectedStateName];
+    if (name == nil)
+        return;
+    NSString *copyName = [StatesView makeCopyName:name];
+    NSString *finalPath = [NSString stringWithFormat:@"config/%@.f42", copyName];
+    const char *finalPathC = [finalPath UTF8String];
+    
+    // What we do next depends on whether the selected state is the currently active
+    // one. If it is, we'll call core_save_state(), to make sure the duplicate
+    // actually matches the most up-to-date state; otherwise, we can simply copy
+    // the existing state file.
+    if ([name compare:[NSString stringWithUTF8String:state.coreName]] == NSOrderedSame)
+        core_save_state(finalPathC);
+    else {
+        NSString *origName = [NSString stringWithFormat:@"config/%@.f42", name];
+        if (![self copyStateFrom:[origName UTF8String] to:finalPathC])
+            [RootViewController showMessage:@"State duplication failed."];
+    }
+    [self raised];
 }
 
 - (void) doRename {
+    NSString *oldName = [self selectedStateName];
+    if (oldName == nil)
+        return;
+    [self getNewStateNameWithCompletion:@selector(doRename2:)];
+}
 
+- (void) doRename2:(NSString* )newName {
+    NSString *oldName = [self selectedStateName];
+    if (oldName == nil)
+        return;
+    if ([newName length] == 0 || [newName containsString:@"/"]) {
+        [RootViewController showMessage:@"That name is not valid."];
+        return;
+    }
+    NSString *newPath = [NSString stringWithFormat:@"config/%@.f42", newName];
+    const char *newPathC = [newPath UTF8String];
+    struct stat st;
+    if (stat(newPathC, &st) == 0) {
+        [RootViewController showMessage:@"That name is already in use."];
+        return;
+    }
+    NSString *oldPath = [NSString stringWithFormat:@"config/%@.f42", oldName];
+    rename([oldPath UTF8String], newPathC);
+    if ([oldName compare:[NSString stringWithUTF8String:state.coreName]] == NSOrderedSame) {
+        strncpy(state.coreName, [newName UTF8String], FILENAMELEN);
+    }
+    [self raised];
 }
 
 - (void) doDelete {
-    NSIndexPath *index = [stateTable indexPathForSelectedRow];
-    if (index == nil)
+    NSString *name = [self selectedStateName];
+    if (name == nil || [name compare:[NSString stringWithUTF8String:state.coreName]] == NSOrderedSame)
         return;
-    int idx = (int) [index indexAtPosition:1];
-    NSString *stateName = [stateNames objectAtIndex:idx];
-    remove([[NSString stringWithFormat:@"%@.f42", stateName] UTF8String]);
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Confirm Delete" message:[NSString stringWithFormat:@"Are you sure you want to delete the state \"%@\"?", name] preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil];
+    UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [self doDelete2];
+    }];
+    [alert addAction:cancelAction];
+    [alert addAction:okAction];
+    [self.window.rootViewController presentViewController:alert animated:YES completion:nil];
+}
+
+- (void) doDelete2 {
+    NSString *name = [self selectedStateName];
+    if (name == nil || [name compare:[NSString stringWithUTF8String:state.coreName]] == NSOrderedSame)
+    return;
+    NSString *path = [NSString stringWithFormat:@"config/%@.f42", name];
+    remove([path UTF8String]);
     [self raised];
 }
 
 - (void) doShare {
-
+    NSString *name = [self selectedStateName];
+    if (name == nil)
+        return;
+    char *cwd = getcwd(NULL, 0);
+    NSString *statePath = [NSString stringWithFormat:@"%s/config/%@.f42", cwd, name];
+    free(cwd);
+    if ([name compare:[NSString stringWithUTF8String:state.coreName]] == NSOrderedSame)
+        core_save_state([statePath UTF8String]);
+    UIActivityViewController *activityViewController = [[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:statePath]] applicationActivities:nil];
+    [self.window.rootViewController presentViewController:activityViewController animated:YES completion:nil];
 }
 
 - (void) actionSheet:(UIActionSheet *) actionSheet clickedButtonAtIndex:(NSInteger) buttonIndex {
